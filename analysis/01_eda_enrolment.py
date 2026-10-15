@@ -288,3 +288,82 @@ plt.savefig(
 )
 
 plt.show()
+
+# --------------------------------------------------
+# 15. TOP 10 LARGEST ENROLMENT RECORDS
+# --------------------------------------------------
+
+largest_records = (
+    df.nlargest(10, "UGDS")[
+        ["UNITID", "INSTNM", "STABBR", "CONTROL", "year", "UGDS"]
+    ]
+)
+
+print("\n=====================================")
+print("TOP 10 LARGEST ENROLMENT RECORDS")
+print("=====================================")
+
+print(largest_records)
+
+
+# --------------------------------------------------
+# 16. INSTITUTIONS WITH ZERO ENROLMENT
+# --------------------------------------------------
+
+zero_case_details = (
+    df[df["UGDS"] == 0]
+    [
+        ["UNITID", "INSTNM", "STABBR", "CONTROL", "year", "UGDS"]
+    ]
+    .sort_values(["UNITID", "year"])
+)
+
+print("\n=====================================")
+print("ZERO ENROLMENT CASES")
+print("=====================================")
+
+print(zero_case_details)
+
+
+# --------------------------------------------------
+# 17. ENROLMENT HISTORY FOR ZERO-CASE INSTITUTIONS
+# --------------------------------------------------
+
+zero_ids = zero_case_details["UNITID"].unique()
+
+zero_history = (
+    df[df["UNITID"].isin(zero_ids)]
+    [
+        ["UNITID", "INSTNM", "year", "UGDS"]
+    ]
+    .sort_values(["UNITID", "year"])
+)
+
+print("\n=====================================")
+print("FULL HISTORY OF ZERO-CASE INSTITUTIONS")
+print("=====================================")
+
+print(zero_history)
+
+
+# --------------------------------------------------
+# 18. SAVE OUTLIER AND ZERO-CASE RESULTS
+# --------------------------------------------------
+
+largest_records.to_csv(
+    RESULTS_FOLDER / "eda_largest_enrolment_records.csv",
+    index=False
+)
+
+zero_case_details.to_csv(
+    RESULTS_FOLDER / "eda_zero_enrolment_cases.csv",
+    index=False
+)
+
+zero_history.to_csv(
+    RESULTS_FOLDER / "eda_zero_enrolment_history.csv",
+    index=False
+)
+
+
+print("\nEDA STEP 3 COMPLETE")
