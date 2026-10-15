@@ -560,3 +560,121 @@ trend_counts.to_csv(
 
 print("\nEDA STEP 4 COMPLETE")
 
+# --------------------------------------------------
+# 28. TOP 15 HIGHEST PERCENTAGE GROWTH
+# --------------------------------------------------
+
+highest_growth = (
+    institution_change
+    .nlargest(15, "percentage_change")
+    [
+        [
+            "UNITID",
+            "INSTNM",
+            "STABBR",
+            "CONTROL",
+            "enrolment_2001",
+            "enrolment_2013",
+            "absolute_change",
+            "percentage_change",
+            "cagr"
+        ]
+    ]
+)
+
+print("\n=====================================")
+print("TOP 15 HIGHEST PERCENTAGE GROWTH")
+print("=====================================")
+
+print(highest_growth)
+
+
+# --------------------------------------------------
+# 29. TOP 15 LARGEST DECLINES
+# --------------------------------------------------
+
+largest_decline = (
+    institution_change
+    .nsmallest(15, "percentage_change")
+    [
+        [
+            "UNITID",
+            "INSTNM",
+            "STABBR",
+            "CONTROL",
+            "enrolment_2001",
+            "enrolment_2013",
+            "absolute_change",
+            "percentage_change",
+            "cagr"
+        ]
+    ]
+)
+
+print("\n=====================================")
+print("TOP 15 LARGEST PERCENTAGE DECLINES")
+print("=====================================")
+
+print(largest_decline)
+
+
+# --------------------------------------------------
+# 30. CHECK SMALL STARTING ENROLMENT
+# --------------------------------------------------
+
+small_start_counts = {
+    "10_or_less": (
+        institution_change["enrolment_2001"] <= 10
+    ).sum(),
+
+    "50_or_less": (
+        institution_change["enrolment_2001"] <= 50
+    ).sum(),
+
+    "100_or_less": (
+        institution_change["enrolment_2001"] <= 100
+    ).sum()
+}
+
+print("\n=====================================")
+print("SMALL STARTING ENROLMENT COUNTS")
+print("=====================================")
+
+for label, count in small_start_counts.items():
+    print(f"{label}: {count:,}")
+
+
+# --------------------------------------------------
+# 31. CHECK STARTING SIZE OF TOP 100 GROWTH CASES
+# --------------------------------------------------
+
+top_100_growth = (
+    institution_change
+    .nlargest(100, "percentage_change")
+)
+
+print("\n=====================================")
+print("TOP 100 GROWTH CASES - STARTING SIZE")
+print("=====================================")
+
+print(
+    top_100_growth["enrolment_2001"]
+    .describe()
+)
+
+
+# --------------------------------------------------
+# 32. SAVE EXTREME CASES
+# --------------------------------------------------
+
+highest_growth.to_csv(
+    RESULTS_FOLDER / "eda_highest_growth_institutions.csv",
+    index=False
+)
+
+largest_decline.to_csv(
+    RESULTS_FOLDER / "eda_largest_decline_institutions.csv",
+    index=False
+)
+
+print("\nEDA STEP 5 COMPLETE")
