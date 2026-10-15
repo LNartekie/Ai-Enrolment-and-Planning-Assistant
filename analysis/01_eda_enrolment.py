@@ -289,6 +289,7 @@ plt.savefig(
 
 plt.show()
 
+
 # --------------------------------------------------
 # 15. TOP 10 LARGEST ENROLMENT RECORDS
 # --------------------------------------------------
@@ -367,3 +368,195 @@ zero_history.to_csv(
 
 
 print("\nEDA STEP 3 COMPLETE")
+
+
+# --------------------------------------------------
+# 19. CREATE MAIN FORECASTING BASE DATASET
+# --------------------------------------------------
+
+# Identify institutions that contain at least one zero UGDS value
+zero_institution_ids = (
+    df.loc[df["UGDS"] == 0, "UNITID"]
+    .unique()
+)
+
+# Exclude those institutions from the primary forecasting dataset
+forecasting_df = (
+    df[~df["UNITID"].isin(zero_institution_ids)]
+    .copy()
+)
+
+print("\n=====================================")
+print("FORECASTING BASE DATASET")
+print("=====================================")
+
+print(f"Rows: {len(forecasting_df):,}")
+
+print(
+    f"Institutions: "
+    f"{forecasting_df['UNITID'].nunique():,}"
+)
+
+print(
+    f"Zero UGDS values: "
+    f"{(forecasting_df['UGDS'] == 0).sum():,}"
+)
+
+
+# Save the modelling base dataset
+forecasting_df.to_csv(
+    PROJECT_ROOT
+    / "data"
+    / "processed"
+    / "forecasting_base_2001_2013.csv",
+    index=False
+)
+
+
+# --------------------------------------------------
+# 20. GET 2001 AND 2013 ENROLMENT
+# --------------------------------------------------
+
+start_data = (
+    forecasting_df[
+        forecasting_df["year"] == 2001
+    ][
+        ["UNITID", "UGDS"]
+    ]
+    .rename(
+        columns={
+            "UGDS": "enrolment_2001"
+        }
+    )
+)
+
+end_data = (
+    forecasting_df[
+        forecasting_df["year"] == 2013
+    ][
+        [
+            "UNITID",
+            "INSTNM",
+            "STABBR",
+            "CONTROL",
+            "UGDS"
+        ]
+    ]
+    .rename(
+        columns={
+            "UGDS": "enrolment_2013"
+        }
+    )
+)
+
+
+# --------------------------------------------------
+# 21. COMBINE START AND END VALUES
+# --------------------------------------------------
+
+institution_change = pd.merge(
+    start_data,
+    end_data,
+    on="UNITID",
+    how="inner"
+)
+
+
+# --------------------------------------------------
+# 22. CALCULATE CHANGE
+# --------------------------------------------------
+
+institution_change["absolute_change"] = (
+    institution_change["enrolment_2013"]
+    - institution_change["enrolment_2001"]
+)
+
+institution_change["percentage_change"] = (
+    (
+        institution_change["enrolment_2013"]
+        - institution_change["enrolment_2001"]
+    )
+    / institution_change["enrolment_2001"]
+    * 100
+)
+
+
+# --------------------------------------------------
+# 23. CALCULATE CAGR
+# --------------------------------------------------
+
+institution_change["cagr"] = (
+    (
+        institution_change["enrolment_2013"]
+        / institution_change["enrolment_2001"]
+    ) ** (1 / 12)
+    - 1
+) * 100
+
+
+# --------------------------------------------------
+# 24. CLASSIFY INSTITUTION TREND
+# --------------------------------------------------
+
+institution_change["trend_category"] = "Stable"
+
+institution_change.loc[
+    institution_change["percentage_change"] > 5,
+    "trend_category"
+] = "Growth"
+
+institution_change.loc[
+    institution_change["percentage_change"] < -5,
+    "trend_category"
+] = "Decline"
+
+
+# --------------------------------------------------
+# 25. COUNT TREND CATEGORIES
+# --------------------------------------------------
+
+trend_counts = (
+    institution_change["trend_category"]
+    .value_counts()
+)
+
+print("\n=====================================")
+print("INSTITUTION TREND CATEGORIES")
+print("=====================================")
+
+print(trend_counts)
+
+
+# --------------------------------------------------
+# 26. SUMMARY STATISTICS
+# --------------------------------------------------
+
+print("\n=====================================")
+print("INSTITUTION PERCENTAGE CHANGE")
+print("=====================================")
+
+print(
+    institution_change[
+        "percentage_change"
+    ].describe()
+)
+
+
+# --------------------------------------------------
+# 27. SAVE RESULTS
+# --------------------------------------------------
+
+institution_change.to_csv(
+    RESULTS_FOLDER
+    / "eda_institution_growth_decline.csv",
+    index=False
+)
+
+trend_counts.to_csv(
+    RESULTS_FOLDER
+    / "eda_institution_trend_counts.csv"
+)
+
+
+print("\nEDA STEP 4 COMPLETE")
+
