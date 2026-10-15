@@ -678,3 +678,159 @@ largest_decline.to_csv(
 )
 
 print("\nEDA STEP 5 COMPLETE")
+
+# --------------------------------------------------
+# 33. CALCULATE TYPICAL INSTITUTION SIZE
+# --------------------------------------------------
+
+institution_size = (
+    forecasting_df
+    .groupby("UNITID")
+    .agg(
+        median_enrolment=("UGDS", "median"),
+        average_enrolment=("UGDS", "mean"),
+        minimum_enrolment=("UGDS", "min"),
+        maximum_enrolment=("UGDS", "max")
+    )
+    .reset_index()
+)
+
+
+# --------------------------------------------------
+# 34. CALCULATE SIZE THRESHOLDS
+# --------------------------------------------------
+
+q1 = institution_size["median_enrolment"].quantile(0.25)
+q3 = institution_size["median_enrolment"].quantile(0.75)
+
+print("\n=====================================")
+print("INSTITUTION SIZE THRESHOLDS")
+print("=====================================")
+
+print(f"25th percentile: {q1:.2f}")
+print(f"75th percentile: {q3:.2f}")
+
+
+# --------------------------------------------------
+# 35. CLASSIFY INSTITUTIONS BY SIZE
+# --------------------------------------------------
+
+def classify_size(median_enrolment):
+
+    if median_enrolment <= q1:
+        return "Small"
+
+    elif median_enrolment <= q3:
+        return "Medium"
+
+    else:
+        return "Large"
+
+
+institution_size["size_category"] = (
+    institution_size["median_enrolment"]
+    .apply(classify_size)
+)
+
+
+# --------------------------------------------------
+# 36. COUNT SIZE CATEGORIES
+# --------------------------------------------------
+
+size_counts = (
+    institution_size["size_category"]
+    .value_counts()
+)
+
+print("\n=====================================")
+print("INSTITUTION SIZE DISTRIBUTION")
+print("=====================================")
+
+print(size_counts)
+
+
+# --------------------------------------------------
+# 37. COMBINE SIZE WITH GROWTH/DECLINE RESULTS
+# --------------------------------------------------
+
+size_trend = pd.merge(
+    institution_change[
+        [
+            "UNITID",
+            "INSTNM",
+            "trend_category",
+            "percentage_change",
+            "cagr"
+        ]
+    ],
+    institution_size[
+        [
+            "UNITID",
+            "median_enrolment",
+            "size_category"
+        ]
+    ],
+    on="UNITID",
+    how="inner"
+)
+
+
+# --------------------------------------------------
+# 38. CREATE SIZE VS TREND TABLE
+# --------------------------------------------------
+
+size_trend_table = pd.crosstab(
+    size_trend["size_category"],
+    size_trend["trend_category"]
+)
+
+print("\n=====================================")
+print("SIZE CATEGORY VS ENROLMENT TREND")
+print("=====================================")
+
+print(size_trend_table)
+
+
+# --------------------------------------------------
+# 39. CALCULATE MEDIAN GROWTH BY SIZE
+# --------------------------------------------------
+
+growth_by_size = (
+    size_trend
+    .groupby("size_category")
+    .agg(
+        institutions=("UNITID", "count"),
+        median_percentage_change=(
+            "percentage_change",
+            "median"
+        ),
+        median_cagr=("cagr", "median")
+    )
+)
+
+print("\n=====================================")
+print("GROWTH BY INSTITUTION SIZE")
+print("=====================================")
+
+print(growth_by_size)
+
+
+# --------------------------------------------------
+# 40. SAVE RESULTS
+# --------------------------------------------------
+
+institution_size.to_csv(
+    RESULTS_FOLDER / "eda_institution_size_categories.csv",
+    index=False
+)
+
+size_trend_table.to_csv(
+    RESULTS_FOLDER / "eda_size_vs_trend.csv"
+)
+
+growth_by_size.to_csv(
+    RESULTS_FOLDER / "eda_growth_by_size.csv"
+)
+
+
+print("\nEDA STEP 6 COMPLETE")
