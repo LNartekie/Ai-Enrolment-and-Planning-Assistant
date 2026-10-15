@@ -200,3 +200,91 @@ print(
     f"\n{RESULTS_FOLDER}"
 )
 
+# --------------------------------------------------
+# 11. YEARLY ENROLMENT TRENDS
+# --------------------------------------------------
+
+yearly_summary = (
+    df.groupby("year")
+      .agg(
+          total_enrolment=("UGDS", "sum"),
+          average_enrolment=("UGDS", "mean"),
+          median_enrolment=("UGDS", "median")
+      )
+      .reset_index()
+)
+
+print("\n=====================================")
+print("YEARLY ENROLMENT SUMMARY")
+print("=====================================")
+
+print(yearly_summary)
+
+
+# --------------------------------------------------
+# 12. YEAR-ON-YEAR TOTAL ENROLMENT CHANGE
+# --------------------------------------------------
+
+yearly_summary["total_change"] = (
+    yearly_summary["total_enrolment"].diff()
+)
+
+yearly_summary["total_percentage_change"] = (
+    yearly_summary["total_enrolment"]
+    .pct_change()
+    .mul(100)
+)
+
+print("\n=====================================")
+print("YEAR-ON-YEAR CHANGE")
+print("=====================================")
+
+print(
+    yearly_summary[
+        [
+            "year",
+            "total_enrolment",
+            "total_change",
+            "total_percentage_change"
+        ]
+    ]
+)
+
+
+# --------------------------------------------------
+# 13. SAVE YEARLY SUMMARY
+# --------------------------------------------------
+
+yearly_summary.to_csv(
+    RESULTS_FOLDER / "eda_yearly_enrolment_summary.csv",
+    index=False
+)
+
+
+# --------------------------------------------------
+# 14. CREATE TREND CHART
+# --------------------------------------------------
+
+import matplotlib.pyplot as plt
+
+plt.figure(figsize=(10, 6))
+
+plt.plot(
+    yearly_summary["year"],
+    yearly_summary["total_enrolment"],
+    marker="o"
+)
+
+plt.title("Total Undergraduate Enrolment, 2001–2013")
+plt.xlabel("Year")
+plt.ylabel("Total Undergraduate Enrolment")
+
+plt.grid(True, alpha=0.3)
+plt.tight_layout()
+
+plt.savefig(
+    RESULTS_FOLDER / "total_enrolment_trend.png",
+    dpi=300
+)
+
+plt.show()
