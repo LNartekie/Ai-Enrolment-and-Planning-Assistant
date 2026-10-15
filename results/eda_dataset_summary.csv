@@ -1,0 +1,10 @@
+metric,value
+total_rows,65000
+total_columns,7
+unique_institutions,5000
+minimum_year,2001
+maximum_year,2013
+missing_UGDS,0
+zero_enrolment_rows,35
+institutions_with_zero_enrolment,30
+duplicate_institution_year_records,0
