@@ -1,0 +1,2 @@
+model,institution_id,institution_name,mae,rmse,mape
+Naive Baseline,127787,Everest College-Thornton,127.0,172.59683272489872,28.73462597826831
