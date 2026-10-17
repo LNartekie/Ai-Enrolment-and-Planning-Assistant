@@ -1,0 +1,10 @@
+size_category,model,institution_count,percentage_within_size
+Large,Holt Linear Trend,174,13.99839098954143
+Large,Linear Trend,122,9.814963797264681
+Large,Naive Baseline,947,76.18664521319388
+Medium,Holt Linear Trend,375,15.096618357487923
+Medium,Linear Trend,283,11.392914653784219
+Medium,Naive Baseline,1826,73.51046698872786
+Small,Holt Linear Trend,202,16.251005631536604
+Small,Linear Trend,203,16.331456154465005
+Small,Naive Baseline,838,67.4175382139984

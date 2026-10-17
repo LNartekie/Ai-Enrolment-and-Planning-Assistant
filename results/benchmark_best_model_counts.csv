@@ -1,0 +1,4 @@
+model,institution_count,percentage
+Naive Baseline,3611,72.65593561368209
+Holt Linear Trend,751,15.110663983903422
+Linear Trend,608,12.233400402414487
