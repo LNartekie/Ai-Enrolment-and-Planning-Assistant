@@ -102,75 +102,54 @@ def check_ollama_connection() -> bool:
         return False
 
 
-# --------------------------------------------------
-# GENERATE EXPLANATION
-# --------------------------------------------------
-
 def generate_forecast_explanation(
     trend_summary: dict,
     forecast_result: dict,
-    capacity: float | None = None
+    capacity: float | None = None,
+    model_name: str | None = None
 ) -> str:
     """
     Ask Ollama to explain deterministic
     enrolment analysis and forecast results.
     """
 
-    forecast_year = (
-        forecast_result["forecast_year"]
-    )
+    # --------------------------------------------------
+    # 1. EXTRACT VERIFIED RESULTS
+    # --------------------------------------------------
+
+    forecast_year = forecast_result["forecast_year"]
 
     predicted_enrolment = (
-        forecast_result[
-            "predicted_enrolment"
-        ]
+        forecast_result["predicted_enrolment"]
     )
 
-    selected_model = (
-        forecast_result[
-            "selected_model"
-        ]
+    selected_forecast_model = (
+        forecast_result["selected_model"]
     )
 
-    mae = (
-        forecast_result["mae"]
-    )
-
-    rmse = (
-        forecast_result["rmse"]
-    )
-
-    mape = (
-        forecast_result["mape"]
-    )
+    mae = forecast_result["mae"]
+    rmse = forecast_result["rmse"]
+    mape = forecast_result["mape"]
 
     evidence = (
-        forecast_result[
-            "backtest_evidence"
-        ]
+        forecast_result["backtest_evidence"]
     )
 
     latest_enrolment = (
-        trend_summary[
-            "latest_enrolment"
-        ]
+        trend_summary["latest_enrolment"]
     )
 
     overall_direction = (
-        trend_summary[
-            "overall_direction"
-        ]
+        trend_summary["overall_direction"]
     )
 
     recent_direction = (
-        trend_summary[
-            "recent_direction"
-        ]
+        trend_summary["recent_direction"]
     )
 
 
     # --------------------------------------------------
-    # OPTIONAL CAPACITY INFORMATION
+    # 2. OPTIONAL CAPACITY INFORMATION
     # --------------------------------------------------
 
     if capacity is not None:
@@ -193,7 +172,7 @@ No capacity information was supplied.
 
 
     # --------------------------------------------------
-    # FORMAT MAPE
+    # 3. FORMAT MAPE
     # --------------------------------------------------
 
     if mape is not None:
@@ -206,7 +185,7 @@ No capacity information was supplied.
 
 
     # --------------------------------------------------
-    # USER PROMPT
+    # 4. BUILD USER PROMPT
     # --------------------------------------------------
 
     user_prompt = f"""
@@ -234,7 +213,7 @@ Predicted enrolment:
 {predicted_enrolment:.0f}
 
 Selected forecasting model:
-{selected_model}
+{selected_forecast_model}
 
 
 BACKTEST PERFORMANCE
@@ -261,7 +240,7 @@ Provide:
 
 - a short explanation of the historical trend;
 - a clear explanation of the forecast;
-- an interpretation of the model error;
+- an interpretation of the historical backtest error;
 - the capacity implication, if capacity is available;
 - an explicit reminder that the forecast requires
   human review.
@@ -272,27 +251,42 @@ provided above.
 
 
     # --------------------------------------------------
-    # SEND REQUEST TO OLLAMA
+    # 5. CHOOSE OLLAMA MODEL
+    # --------------------------------------------------
+
+    selected_model_name = (
+        model_name
+        if model_name is not None
+        else OLLAMA_MODEL
+    )
+
+
+    # --------------------------------------------------
+    # 6. BUILD OLLAMA REQUEST
     # --------------------------------------------------
 
     payload = {
-    "model": OLLAMA_MODEL,
+        "model": selected_model_name,
 
-    "messages": [
-        {
-            "role": "system",
-            "content": SYSTEM_PROMPT
-        },
-        {
-            "role": "user",
-            "content": user_prompt
-        }
-    ],
+        "messages": [
+            {
+                "role": "system",
+                "content": SYSTEM_PROMPT
+            },
+            {
+                "role": "user",
+                "content": user_prompt
+            }
+        ],
 
-    "think": False,
-    "stream": False
-}
+        "think": False,
+        "stream": False
+    }
 
+
+    # --------------------------------------------------
+    # 7. SEND REQUEST TO OLLAMA
+    # --------------------------------------------------
 
     try:
 
@@ -304,16 +298,10 @@ provided above.
 
         response.raise_for_status()
 
-        response_data = (
-            response.json()
-        )
+        response_data = response.json()
 
         explanation = (
-            response_data[
-                "message"
-            ][
-                "content"
-            ]
+            response_data["message"]["content"]
         )
 
         return explanation.strip()
