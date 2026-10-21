@@ -294,9 +294,9 @@ End with a clear human-review statement.
     # Concise decision-support explanation
     # --------------------------------------------------
 
-    elif variant == "C":
+   elif variant == "C":
 
-        instructions = """
+    instructions = """
 TASK
 
 Write a concise decision-support explanation for
@@ -306,30 +306,35 @@ Start with a one-sentence summary.
 
 Then briefly explain:
 
-- the historical direction;
-- the next-year forecast;
-- what the MAE, RMSE, and MAPE indicate about
-  historical model performance;
+- the historical enrolment direction;
+- the next-year enrolment forecast;
+- the supplied MAE, RMSE, and MAPE as measures of
+  historical backtest error;
 - the supplied capacity status;
 - why human review is still required.
 
+Important:
+
+Do not calculate any new numbers.
+
+Do not describe enrolment as student demand.
+
+Do not label forecasting accuracy as high, moderate,
+low, good, or poor unless such a classification is
+explicitly supplied.
+
+Use the supplied capacity status exactly as provided.
+
+Do not recommend staffing, budgeting, admissions,
+facility, or programme actions.
+
+Do not infer causes for historical enrolment changes.
+
 Keep the response concise and avoid repetition.
 
-Do not generate new calculations or numbers.
-
-Do not infer causes, demand, staffing needs,
-budget needs, or facility requirements.
+Forecasts are planning estimates and not guaranteed
+future outcomes.
 """
-
-
-    else:
-
-        raise ValueError(
-            f"Unknown prompt variant: {variant}"
-        )
-
-
-    return (
         context
         + "\n"
         + instructions
