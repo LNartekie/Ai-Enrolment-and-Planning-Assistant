@@ -1,9 +1,22 @@
 import pandas as pd
 import streamlit as st
 
-from app.services.data_validation import validate_enrolment_data
-from app.services.trend_analysis import analyse_enrolment_trend
-from app.services.forecasting import run_forecasting_pipeline
+from app.services.data_validation import (
+    validate_enrolment_data
+)
+
+from app.services.trend_analysis import (
+    analyse_enrolment_trend
+)
+
+from app.services.forecasting import (
+    run_forecasting_pipeline
+)
+
+from app.services.llm_service import (
+    check_ollama_connection,
+    generate_forecast_explanation
+)
 
 
 # --------------------------------------------------
@@ -29,15 +42,16 @@ st.title(
 st.write(
     """
     Upload your institution's historical enrolment data
-    to analyse trends and generate a next-year enrolment
-    forecast.
+    to analyse trends, evaluate forecasting methods,
+    generate a next-year forecast, and receive an
+    AI-assisted planning explanation.
     """
 )
 
 st.info(
-    "The current version uses deterministic analytical "
-    "and forecasting tools. AI-generated explanations "
-    "will be added in a later stage."
+    "Numerical calculations and forecasts are produced "
+    "by deterministic Python tools. The AI model is used "
+    "only to explain the calculated results."
 )
 
 
@@ -47,7 +61,10 @@ st.info(
 
 uploaded_file = st.file_uploader(
     "Upload enrolment data",
-    type=["csv", "xlsx"]
+    type=[
+        "csv",
+        "xlsx"
+    ]
 )
 
 
@@ -62,11 +79,13 @@ if uploaded_file is not None:
         if uploaded_file.name.lower().endswith(
             ".csv"
         ):
+
             raw_data = pd.read_csv(
                 uploaded_file
             )
 
         else:
+
             raw_data = pd.read_excel(
                 uploaded_file
             )
@@ -74,7 +93,7 @@ if uploaded_file is not None:
     except Exception as error:
 
         st.error(
-            f"Unable to read the uploaded file: "
+            "Unable to read the uploaded file: "
             f"{error}"
         )
 
@@ -96,7 +115,7 @@ if uploaded_file is not None:
 
 
     # --------------------------------------------------
-    # VALIDATION
+    # DATA VALIDATION
     # --------------------------------------------------
 
     st.subheader(
@@ -110,11 +129,9 @@ if uploaded_file is not None:
     )
 
 
-    # --------------------------------------------------
-    # SHOW VALIDATION ERRORS
-    # --------------------------------------------------
-
-    if not validation_result["valid"]:
+    if not validation_result[
+        "valid"
+    ]:
 
         st.error(
             "The uploaded data cannot currently "
@@ -122,9 +139,14 @@ if uploaded_file is not None:
         )
 
         for error in (
-            validation_result["errors"]
+            validation_result[
+                "errors"
+            ]
         ):
-            st.error(error)
+
+            st.error(
+                error
+            )
 
         st.stop()
 
@@ -146,13 +168,18 @@ if uploaded_file is not None:
 
 
     # --------------------------------------------------
-    # SHOW WARNINGS
+    # VALIDATION WARNINGS
     # --------------------------------------------------
 
     for warning in (
-        validation_result["warnings"]
+        validation_result[
+            "warnings"
+        ]
     ):
-        st.warning(warning)
+
+        st.warning(
+            warning
+        )
 
 
     # --------------------------------------------------
@@ -160,7 +187,9 @@ if uploaded_file is not None:
     # --------------------------------------------------
 
     validation_summary = (
-        validation_result["summary"]
+        validation_result[
+            "summary"
+        ]
     )
 
     col1, col2, col3, col4 = (
@@ -190,7 +219,9 @@ if uploaded_file is not None:
 
     col4.metric(
         "Latest Enrolment",
-        f"{validation_summary['latest_enrolment']:,.0f}"
+        (
+            f"{validation_summary['latest_enrolment']:,.0f}"
+        )
     )
 
 
@@ -204,9 +235,14 @@ if uploaded_file is not None:
 
     chart_data = (
         cleaned_data[
-            ["year", "enrolment"]
+            [
+                "year",
+                "enrolment"
+            ]
         ]
-        .set_index("year")
+        .set_index(
+            "year"
+        )
     )
 
     st.line_chart(
@@ -230,13 +266,17 @@ if uploaded_file is not None:
             )
         )
 
-        trend = trend_result[
-            "summary"
-        ]
+        trend = (
+            trend_result[
+                "summary"
+            ]
+        )
+
 
         t1, t2, t3, t4 = (
             st.columns(4)
         )
+
 
         t1.metric(
             "Overall Trend",
@@ -245,6 +285,7 @@ if uploaded_file is not None:
             ]
         )
 
+
         t2.metric(
             "Recent Trend",
             trend[
@@ -252,13 +293,19 @@ if uploaded_file is not None:
             ]
         )
 
+
         t3.metric(
             "Average Enrolment",
-            f"{trend['average_enrolment']:,.0f}"
+            (
+                f"{trend['average_enrolment']:,.0f}"
+            )
         )
 
+
         if (
-            trend["percentage_change"]
+            trend[
+                "percentage_change"
+            ]
             is not None
         ):
 
@@ -270,51 +317,61 @@ if uploaded_file is not None:
 
             percentage_text = "N/A"
 
+
         t4.metric(
             "Overall Change",
             percentage_text
         )
 
 
-        # More detail
+        # --------------------------------------------------
+        # DETAILED TREND INFORMATION
+        # --------------------------------------------------
+
         with st.expander(
             "View detailed trend statistics"
         ):
 
             st.write(
-                f"**Minimum enrolment:** "
+                "**Minimum enrolment:** "
                 f"{trend['minimum_enrolment']:,.0f}"
             )
 
             st.write(
-                f"**Maximum enrolment:** "
+                "**Maximum enrolment:** "
                 f"{trend['maximum_enrolment']:,.0f}"
             )
 
             st.write(
-                f"**Median enrolment:** "
+                "**Median enrolment:** "
                 f"{trend['median_enrolment']:,.0f}"
             )
 
             st.write(
-                f"**Absolute change:** "
+                "**Absolute change:** "
                 f"{trend['absolute_change']:,.0f}"
             )
 
-            if trend["cagr"] is not None:
+            if (
+                trend["cagr"]
+                is not None
+            ):
 
                 st.write(
-                    f"**CAGR:** "
+                    "**CAGR:** "
                     f"{trend['cagr']:.2f}%"
                 )
 
             st.write(
-                f"**Average annual change:** "
+                "**Average annual change:** "
                 f"{trend['average_annual_change']:,.2f}"
             )
 
 
-        # Annual change table
+        # --------------------------------------------------
+        # ANNUAL CHANGES
+        # --------------------------------------------------
+
         with st.expander(
             "View annual changes"
         ):
@@ -326,12 +383,15 @@ if uploaded_file is not None:
                 use_container_width=True
             )
 
+
     except Exception as error:
 
         st.error(
-            f"Trend analysis could not be completed: "
+            "Trend analysis could not be completed: "
             f"{error}"
         )
+
+        st.stop()
 
 
     # --------------------------------------------------
@@ -350,9 +410,15 @@ if uploaded_file is not None:
             )
         )
 
+
+        # --------------------------------------------------
+        # MAIN FORECAST
+        # --------------------------------------------------
+
         f1, f2, f3 = (
             st.columns(3)
         )
+
 
         f1.metric(
             "Forecast Year",
@@ -361,10 +427,14 @@ if uploaded_file is not None:
             ]
         )
 
+
         f2.metric(
             "Predicted Enrolment",
-            f"{forecast_result['predicted_enrolment']:,.0f}"
+            (
+                f"{forecast_result['predicted_enrolment']:,.0f}"
+            )
         )
+
 
         f3.metric(
             "Selected Model",
@@ -375,29 +445,35 @@ if uploaded_file is not None:
 
 
         # --------------------------------------------------
-        # PERFORMANCE METRICS
+        # BACKTEST PERFORMANCE
         # --------------------------------------------------
 
         st.markdown(
             "### Backtest Performance"
         )
 
+
         m1, m2, m3, m4 = (
             st.columns(4)
         )
+
 
         m1.metric(
             "MAE",
             f"{forecast_result['mae']:.2f}"
         )
 
+
         m2.metric(
             "RMSE",
             f"{forecast_result['rmse']:.2f}"
         )
 
+
         if (
-            forecast_result["mape"]
+            forecast_result[
+                "mape"
+            ]
             is not None
         ):
 
@@ -409,10 +485,12 @@ if uploaded_file is not None:
 
             mape_text = "N/A"
 
+
         m3.metric(
             "MAPE",
             mape_text
         )
+
 
         m4.metric(
             "Backtest Evidence",
@@ -439,7 +517,7 @@ if uploaded_file is not None:
 
 
         # --------------------------------------------------
-        # MODEL SELECTION INFORMATION
+        # SIMPLICITY RULE
         # --------------------------------------------------
 
         if forecast_result[
@@ -447,21 +525,31 @@ if uploaded_file is not None:
         ]:
 
             st.info(
-                "The simplest model within 5% of "
-                "the best MAE was selected."
+                "The simplest model within 5% "
+                "of the lowest MAE was selected."
             )
 
 
         # --------------------------------------------------
-        # CAPACITY CHECK
+        # CAPACITY ANALYSIS
         # --------------------------------------------------
 
-        if "capacity" in cleaned_data.columns:
+        latest_capacity = None
+        capacity_gap = None
+
+
+        if (
+            "capacity"
+            in cleaned_data.columns
+        ):
 
             valid_capacity = (
-                cleaned_data["capacity"]
+                cleaned_data[
+                    "capacity"
+                ]
                 .dropna()
             )
+
 
             if not valid_capacity.empty:
 
@@ -469,34 +557,45 @@ if uploaded_file is not None:
                     valid_capacity.iloc[-1]
                 )
 
+
                 predicted_enrolment = (
                     forecast_result[
                         "predicted_enrolment"
                     ]
                 )
 
+
                 capacity_gap = (
                     predicted_enrolment
                     - latest_capacity
                 )
 
+
                 st.markdown(
                     "### Capacity Check"
                 )
+
 
                 c1, c2 = (
                     st.columns(2)
                 )
 
+
                 c1.metric(
                     "Latest Capacity",
-                    f"{latest_capacity:,.0f}"
+                    (
+                        f"{latest_capacity:,.0f}"
+                    )
                 )
+
 
                 c2.metric(
                     "Forecast Capacity Gap",
-                    f"{capacity_gap:,.0f}"
+                    (
+                        f"{capacity_gap:,.0f}"
+                    )
                 )
+
 
                 if capacity_gap > 0:
 
@@ -514,15 +613,122 @@ if uploaded_file is not None:
 
 
         # --------------------------------------------------
-        # HUMAN REVIEW
+        # AI EXPLANATION
         # --------------------------------------------------
+
+        st.divider()
+
+        st.subheader(
+            "AI-Assisted Forecast Explanation"
+        )
+
+        st.write(
+            "The AI does not calculate the forecast. "
+            "It receives the verified analytical results "
+            "above and explains them in plain language."
+        )
+
+
+        # Create a unique key for this analysis.
+        # This helps preserve the explanation across
+        # Streamlit reruns.
+        explanation_key = (
+            "forecast_explanation_"
+            f"{uploaded_file.name}_"
+            f"{forecast_result['forecast_year']}_"
+            f"{forecast_result['predicted_enrolment']:.2f}"
+        )
+
+
+        if st.button(
+            "Generate AI Explanation",
+            type="primary"
+        ):
+
+            # ------------------------------------------
+            # CHECK OLLAMA
+            # ------------------------------------------
+
+            if not check_ollama_connection():
+
+                st.error(
+                    "Ollama is not currently available. "
+                    "Make sure the Ollama service is running."
+                )
+
+            else:
+
+                with st.spinner(
+                    "Generating explanation..."
+                ):
+
+                    try:
+
+                        explanation = (
+                            generate_forecast_explanation(
+                                trend_summary=trend,
+                                forecast_result=forecast_result,
+                                capacity=latest_capacity
+                            )
+                        )
+
+
+                        st.session_state[
+                            explanation_key
+                        ] = explanation
+
+
+                    except Exception as error:
+
+                        st.error(
+                            "The AI explanation could not "
+                            "be generated."
+                        )
+
+                        st.error(
+                            str(error)
+                        )
+
+
+        # --------------------------------------------------
+        # DISPLAY SAVED EXPLANATION
+        # --------------------------------------------------
+
+        if (
+            explanation_key
+            in st.session_state
+        ):
+
+            st.markdown(
+                "### AI Explanation"
+            )
+
+            st.markdown(
+                st.session_state[
+                    explanation_key
+                ]
+            )
+
+
+            st.caption(
+                "AI-generated explanation based on "
+                "deterministic analytical and forecasting "
+                "results."
+            )
+
+
+        # --------------------------------------------------
+        # HUMAN REVIEW NOTICE
+        # --------------------------------------------------
+
+        st.divider()
 
         st.warning(
             "Forecasts are planning estimates and "
             "should be reviewed by an authorised "
             "institutional decision-maker before "
-            "staffing, budget, or capacity decisions "
-            "are made."
+            "staffing, budgeting, admissions, programme, "
+            "or capacity decisions are made."
         )
 
 
@@ -533,11 +739,13 @@ if uploaded_file is not None:
             "forecasting could not be completed."
         )
 
-        st.error(str(error))
+        st.error(
+            str(error)
+        )
 
 
 # --------------------------------------------------
-# NO FILE YET
+# NO FILE UPLOADED
 # --------------------------------------------------
 
 else:
