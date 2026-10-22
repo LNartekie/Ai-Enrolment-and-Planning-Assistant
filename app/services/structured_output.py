@@ -14,6 +14,10 @@ from app.schemas.forecast_response import (
     ForecastExplanation,
 )
 
+from app.services.structured_validation import (
+    validate_forecast_semantics,
+)
+
 
 # --------------------------------------------------
 # LOAD ENVIRONMENT VARIABLES
@@ -45,12 +49,11 @@ def generate_structured_forecast_explanation(
     model_name: str | None = None,
 ) -> ForecastExplanation:
     """
-    Ask Ollama to return a forecast explanation
-    that matches the ForecastExplanation
-    Pydantic schema.
+    Generate an AI forecast explanation that must pass:
 
-    The returned JSON is validated before it is
-    accepted by the application.
+    1. Ollama JSON-schema constraints
+    2. Pydantic structural validation
+    3. Deterministic semantic validation
     """
 
     selected_model = (
@@ -61,7 +64,7 @@ def generate_structured_forecast_explanation(
 
 
     # --------------------------------------------------
-    # 1. BUILD THE VERIFIED PROMPT
+    # 1. BUILD VERIFIED PROMPT
     # --------------------------------------------------
 
     base_prompt = build_forecast_prompt(
@@ -73,7 +76,7 @@ def generate_structured_forecast_explanation(
 
 
     # --------------------------------------------------
-    # 2. GENERATE JSON SCHEMA FROM PYDANTIC
+    # 2. CREATE JSON SCHEMA
     # --------------------------------------------------
 
     response_schema = (
@@ -82,7 +85,7 @@ def generate_structured_forecast_explanation(
 
 
     # --------------------------------------------------
-    # 3. ADD STRUCTURED OUTPUT INSTRUCTIONS
+    # 3. STRUCTURED OUTPUT INSTRUCTIONS
     # --------------------------------------------------
 
     user_prompt = f"""
@@ -95,10 +98,16 @@ Return only valid JSON.
 The JSON must match the supplied schema exactly.
 
 Do not include Markdown.
-
 Do not include code fences.
+Do not include text outside the JSON.
 
-Do not include explanatory text outside the JSON.
+Do not describe model accuracy or error as high,
+moderate, low, good, or poor.
+
+Do not say that the model or forecast was validated.
+
+A backtest evidence label describes only the amount
+of historical evaluation available.
 
 JSON SCHEMA:
 
@@ -128,12 +137,8 @@ JSON SCHEMA:
 
         "stream": False,
 
-        # Ollama will attempt to constrain the
-        # model response to this JSON schema.
         "format": response_schema,
 
-        # Lower temperature gives more
-        # deterministic structured responses.
         "options": {
             "temperature": 0,
         },
@@ -164,7 +169,7 @@ JSON SCHEMA:
 
 
     # --------------------------------------------------
-    # 6. EXTRACT MODEL RESPONSE
+    # 6. EXTRACT RAW RESPONSE
     # --------------------------------------------------
 
     try:
@@ -198,7 +203,7 @@ JSON SCHEMA:
 
 
     # --------------------------------------------------
-    # 7. VALIDATE JSON WITH PYDANTIC
+    # 7. PYDANTIC STRUCTURAL VALIDATION
     # --------------------------------------------------
 
     try:
@@ -218,7 +223,36 @@ JSON SCHEMA:
 
 
     # --------------------------------------------------
-    # 8. RETURN ONLY VALIDATED DATA
+    # 8. SEMANTIC VALIDATION
+    # --------------------------------------------------
+
+    semantic_errors = (
+        validate_forecast_semantics(
+            response=validated_response,
+            forecast_result=forecast_result,
+            capacity=capacity,
+        )
+    )
+
+
+    if semantic_errors:
+
+        error_message = (
+            " | ".join(
+                semantic_errors
+            )
+        )
+
+        raise RuntimeError(
+            "The AI response passed structural "
+            "validation but failed semantic "
+            "validation: "
+            f"{error_message}"
+        )
+
+
+    # --------------------------------------------------
+    # 9. RETURN ONLY FULLY VALIDATED OUTPUT
     # --------------------------------------------------
 
     return validated_response
