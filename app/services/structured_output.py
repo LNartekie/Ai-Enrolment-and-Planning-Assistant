@@ -39,88 +39,27 @@ OLLAMA_MODEL = os.getenv(
 
 
 # --------------------------------------------------
-# GENERATE STRUCTURED FORECAST EXPLANATION
+# SEND ONE STRUCTURED REQUEST TO OLLAMA
 # --------------------------------------------------
 
-def generate_structured_forecast_explanation(
-    trend_summary: dict,
-    forecast_result: dict,
-    capacity: float | None = None,
-    model_name: str | None = None,
+def _request_structured_response(
+    user_prompt: str,
+    response_schema: dict,
+    model_name: str,
 ) -> ForecastExplanation:
     """
-    Generate an AI forecast explanation that must pass:
+    Send one structured request to Ollama.
 
-    1. Ollama JSON-schema constraints
-    2. Pydantic structural validation
-    3. Deterministic semantic validation
+    This function performs:
+    1. Ollama API communication
+    2. JSON extraction
+    3. Pydantic structural validation
+
+    Semantic validation is handled separately.
     """
 
-    selected_model = (
-        model_name
-        if model_name is not None
-        else OLLAMA_MODEL
-    )
-
-
-    # --------------------------------------------------
-    # 1. BUILD VERIFIED PROMPT
-    # --------------------------------------------------
-
-    base_prompt = build_forecast_prompt(
-        trend_summary=trend_summary,
-        forecast_result=forecast_result,
-        capacity=capacity,
-        variant="C",
-    )
-
-
-    # --------------------------------------------------
-    # 2. CREATE JSON SCHEMA
-    # --------------------------------------------------
-
-    response_schema = (
-        ForecastExplanation.model_json_schema()
-    )
-
-
-    # --------------------------------------------------
-    # 3. STRUCTURED OUTPUT INSTRUCTIONS
-    # --------------------------------------------------
-
-    user_prompt = f"""
-{base_prompt}
-
-STRUCTURED OUTPUT REQUIREMENT
-
-Return only valid JSON.
-
-The JSON must match the supplied schema exactly.
-
-Do not include Markdown.
-Do not include code fences.
-Do not include text outside the JSON.
-
-Do not describe model accuracy or error as high,
-moderate, low, good, or poor.
-
-Do not say that the model or forecast was validated.
-
-A backtest evidence label describes only the amount
-of historical evaluation available.
-
-JSON SCHEMA:
-
-{json.dumps(response_schema, indent=2)}
-"""
-
-
-    # --------------------------------------------------
-    # 4. BUILD OLLAMA REQUEST
-    # --------------------------------------------------
-
     payload = {
-        "model": selected_model,
+        "model": model_name,
 
         "messages": [
             {
@@ -146,7 +85,7 @@ JSON SCHEMA:
 
 
     # --------------------------------------------------
-    # 5. CALL OLLAMA
+    # CALL OLLAMA
     # --------------------------------------------------
 
     try:
@@ -169,7 +108,7 @@ JSON SCHEMA:
 
 
     # --------------------------------------------------
-    # 6. EXTRACT RAW RESPONSE
+    # EXTRACT RESPONSE CONTENT
     # --------------------------------------------------
 
     try:
@@ -203,7 +142,7 @@ JSON SCHEMA:
 
 
     # --------------------------------------------------
-    # 7. PYDANTIC STRUCTURAL VALIDATION
+    # PYDANTIC STRUCTURAL VALIDATION
     # --------------------------------------------------
 
     try:
@@ -222,37 +161,235 @@ JSON SCHEMA:
         ) from error
 
 
+    return validated_response
+
+
+# --------------------------------------------------
+# GENERATE FULLY VALIDATED FORECAST EXPLANATION
+# --------------------------------------------------
+
+def generate_structured_forecast_explanation(
+    trend_summary: dict,
+    forecast_result: dict,
+    capacity: float | None = None,
+    model_name: str | None = None,
+) -> ForecastExplanation:
+    """
+    Generate a forecast explanation that must pass:
+
+    1. Ollama JSON-schema constraints
+    2. Pydantic structural validation
+    3. Semantic validation
+
+    If semantic validation fails, one corrective
+    retry is allowed.
+
+    If the retry also fails, the response is rejected.
+    """
+
+    selected_model = (
+        model_name
+        if model_name is not None
+        else OLLAMA_MODEL
+    )
+
+
     # --------------------------------------------------
-    # 8. SEMANTIC VALIDATION
+    # 1. BUILD VERIFIED FORECAST PROMPT
     # --------------------------------------------------
 
-    semantic_errors = (
+    base_prompt = build_forecast_prompt(
+        trend_summary=trend_summary,
+        forecast_result=forecast_result,
+        capacity=capacity,
+        variant="C",
+    )
+
+
+    # --------------------------------------------------
+    # 2. GENERATE JSON SCHEMA FROM PYDANTIC
+    # --------------------------------------------------
+
+    response_schema = (
+        ForecastExplanation.model_json_schema()
+    )
+
+
+    # --------------------------------------------------
+    # 3. BUILD INITIAL STRUCTURED PROMPT
+    # --------------------------------------------------
+
+    initial_prompt = f"""
+{base_prompt}
+
+STRUCTURED OUTPUT REQUIREMENT
+
+Return only valid JSON.
+
+The JSON must match the supplied schema exactly.
+
+Do not include Markdown.
+Do not include code fences.
+Do not include explanatory text outside the JSON.
+
+Do not describe model accuracy or error as:
+high,
+moderate,
+low,
+good,
+or poor.
+
+Do not say that the model or forecast was validated.
+
+The backtest evidence label refers only to the
+amount of historical evaluation available.
+
+Do not reinterpret the meaning of the supplied
+backtest evidence label.
+
+Do not calculate new values.
+
+JSON SCHEMA:
+
+{json.dumps(response_schema, indent=2)}
+"""
+
+
+    # --------------------------------------------------
+    # 4. FIRST GENERATION ATTEMPT
+    # --------------------------------------------------
+
+    first_response = (
+        _request_structured_response(
+            user_prompt=initial_prompt,
+            response_schema=response_schema,
+            model_name=selected_model,
+        )
+    )
+
+
+    # --------------------------------------------------
+    # 5. FIRST SEMANTIC VALIDATION
+    # --------------------------------------------------
+
+    first_semantic_errors = (
         validate_forecast_semantics(
-            response=validated_response,
+            response=first_response,
             forecast_result=forecast_result,
             capacity=capacity,
         )
     )
 
 
-    if semantic_errors:
+    # --------------------------------------------------
+    # 6. RETURN IMMEDIATELY IF VALID
+    # --------------------------------------------------
 
-        error_message = (
-            " | ".join(
-                semantic_errors
-            )
+    if not first_semantic_errors:
+
+        return first_response
+
+
+    # --------------------------------------------------
+    # 7. PREPARE ONE CORRECTIVE RETRY
+    # --------------------------------------------------
+
+    correction_details = "\n".join(
+        f"- {error}"
+        for error in first_semantic_errors
+    )
+
+
+    retry_prompt = f"""
+{base_prompt}
+
+STRUCTURED OUTPUT REQUIREMENT
+
+Return only valid JSON matching the supplied
+schema exactly.
+
+Do not include Markdown.
+Do not include code fences.
+Do not include text outside the JSON.
+
+Your previous attempt failed semantic validation.
+
+The detected problems were:
+
+{correction_details}
+
+CORRECTION RULES
+
+Correct all of the problems above.
+
+Do not describe accuracy or error as high,
+moderate, low, good, or poor.
+
+Do not claim that the model or forecast
+was validated.
+
+Do not calculate new values.
+
+Use only the supplied deterministic facts.
+
+The backtest evidence label describes only
+the amount of historical evaluation available.
+
+Forecasts remain planning estimates.
+
+Human review must remain required.
+
+JSON SCHEMA:
+
+{json.dumps(response_schema, indent=2)}
+"""
+
+
+    # --------------------------------------------------
+    # 8. SECOND AND FINAL GENERATION ATTEMPT
+    # --------------------------------------------------
+
+    retry_response = (
+        _request_structured_response(
+            user_prompt=retry_prompt,
+            response_schema=response_schema,
+            model_name=selected_model,
+        )
+    )
+
+
+    # --------------------------------------------------
+    # 9. VALIDATE RETRY SEMANTICALLY
+    # --------------------------------------------------
+
+    retry_semantic_errors = (
+        validate_forecast_semantics(
+            response=retry_response,
+            forecast_result=forecast_result,
+            capacity=capacity,
+        )
+    )
+
+
+    # --------------------------------------------------
+    # 10. FAIL CLOSED IF RETRY IS STILL INVALID
+    # --------------------------------------------------
+
+    if retry_semantic_errors:
+
+        error_message = " | ".join(
+            retry_semantic_errors
         )
 
         raise RuntimeError(
-            "The AI response passed structural "
-            "validation but failed semantic "
-            "validation: "
+            "The AI response failed semantic "
+            "validation after one corrective retry: "
             f"{error_message}"
         )
 
 
     # --------------------------------------------------
-    # 9. RETURN ONLY FULLY VALIDATED OUTPUT
+    # 11. RETURN CORRECTED VALIDATED RESPONSE
     # --------------------------------------------------
 
-    return validated_response
+    return retry_response
