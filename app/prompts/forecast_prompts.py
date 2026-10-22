@@ -49,52 +49,104 @@ a university administrator.
 """
 
 
+# --------------------------------------------------
+# BUILD VERIFIED ANALYTICAL CONTEXT
+# --------------------------------------------------
+
 def build_verified_context(
     trend_summary: dict,
     forecast_result: dict,
-    capacity: float | None = None
+    capacity: float | None = None,
 ) -> str:
     """
-    Convert deterministic analytical results into
-    verified context for the LLM.
+    Convert deterministic analytical results
+    into verified factual context for the LLM.
     """
 
+    # --------------------------------------------------
+    # HISTORICAL VALUES
+    # --------------------------------------------------
+
     latest_enrolment = (
-        trend_summary["latest_enrolment"]
+        trend_summary[
+            "latest_enrolment"
+        ]
     )
 
     overall_direction = (
-        trend_summary["overall_direction"]
+        trend_summary[
+            "overall_direction"
+        ]
     )
 
     recent_direction = (
-        trend_summary["recent_direction"]
+        trend_summary[
+            "recent_direction"
+        ]
     )
 
+
+    # --------------------------------------------------
+    # FORECAST VALUES
+    # --------------------------------------------------
+
     forecast_year = (
-        forecast_result["forecast_year"]
+        forecast_result[
+            "forecast_year"
+        ]
     )
 
     predicted_enrolment = (
-        forecast_result["predicted_enrolment"]
+        forecast_result[
+            "predicted_enrolment"
+        ]
     )
 
     selected_model = (
-        forecast_result["selected_model"]
+        forecast_result[
+            "selected_model"
+        ]
     )
 
-    mae = forecast_result["mae"]
-    rmse = forecast_result["rmse"]
-    mape = forecast_result["mape"]
+
+    # --------------------------------------------------
+    # BACKTEST VALUES
+    # --------------------------------------------------
+
+    mae = (
+        forecast_result[
+            "mae"
+        ]
+    )
+
+    rmse = (
+        forecast_result[
+            "rmse"
+        ]
+    )
+
+    mape = (
+        forecast_result[
+            "mape"
+        ]
+    )
 
     backtest_folds = (
-        forecast_result["backtest_folds"]
+        forecast_result[
+            "backtest_folds"
+        ]
     )
 
     backtest_evidence = (
-        forecast_result["backtest_evidence"]
+        forecast_result[
+            "backtest_evidence"
+        ]
     )
 
+
+    # --------------------------------------------------
+    # FORMAT MAPE
+    # --------------------------------------------------
 
     if mape is not None:
 
@@ -104,7 +156,9 @@ def build_verified_context(
 
     else:
 
-        mape_text = "Unavailable"
+        mape_text = (
+            "Unavailable"
+        )
 
 
     # --------------------------------------------------
@@ -120,13 +174,16 @@ def build_verified_context(
 
         if capacity_gap > 0:
 
-            capacity_status = "Exceeded"
+            capacity_status = (
+                "Exceeded"
+            )
 
         else:
 
             capacity_status = (
                 "Within capacity"
             )
+
 
         capacity_text = f"""
 Supplied capacity:
@@ -145,6 +202,10 @@ Capacity status:
 No capacity information was supplied.
 """
 
+
+    # --------------------------------------------------
+    # COMPLETE VERIFIED CONTEXT
+    # --------------------------------------------------
 
     context = f"""
 VERIFIED ANALYTICAL RESULTS
@@ -205,27 +266,35 @@ CAPACITY INFORMATION
     return context
 
 
+# --------------------------------------------------
+# BUILD FORECAST PROMPT
+# --------------------------------------------------
+
 def build_forecast_prompt(
     trend_summary: dict,
     forecast_result: dict,
     capacity: float | None = None,
-    variant: str = "A"
+    variant: str = "C",
 ) -> str:
     """
-    Build one of three prompt variations using
-    exactly the same verified analytical context.
+    Build one of three prompt variations.
+
+    A = structured administrator explanation
+    B = evidence-first planning brief
+    C = concise production explanation
     """
 
-    context = build_verified_context(
-        trend_summary,
-        forecast_result,
-        capacity
+    context = (
+        build_verified_context(
+            trend_summary=trend_summary,
+            forecast_result=forecast_result,
+            capacity=capacity,
+        )
     )
 
 
     # --------------------------------------------------
     # VARIANT A
-    # Structured administrator explanation
     # --------------------------------------------------
 
     if variant == "A":
@@ -256,7 +325,6 @@ or guaranteed.
 
     # --------------------------------------------------
     # VARIANT B
-    # Evidence-first explanation
     # --------------------------------------------------
 
     elif variant == "B":
@@ -291,12 +359,11 @@ End with a clear human-review statement.
 
     # --------------------------------------------------
     # VARIANT C
-    # Concise decision-support explanation
     # --------------------------------------------------
 
-   elif variant == "C":
+    elif variant == "C":
 
-    instructions = """
+        instructions = """
 TASK
 
 Write a concise decision-support explanation for
@@ -335,6 +402,24 @@ Keep the response concise and avoid repetition.
 Forecasts are planning estimates and not guaranteed
 future outcomes.
 """
+
+
+    # --------------------------------------------------
+    # INVALID VARIANT
+    # --------------------------------------------------
+
+    else:
+
+        raise ValueError(
+            f"Unknown prompt variant: {variant}"
+        )
+
+
+    # --------------------------------------------------
+    # RETURN COMPLETE PROMPT
+    # --------------------------------------------------
+
+    return (
         context
         + "\n"
         + instructions

@@ -1,21 +1,24 @@
+import hashlib
+
 import pandas as pd
 import streamlit as st
 
 from app.services.data_validation import (
-    validate_enrolment_data
+    validate_enrolment_data,
 )
 
 from app.services.trend_analysis import (
-    analyse_enrolment_trend
+    analyse_enrolment_trend,
 )
 
 from app.services.forecasting import (
-    run_forecasting_pipeline
+    run_forecasting_pipeline,
 )
 
 from app.services.llm_service import (
     check_ollama_connection,
-    generate_forecast_explanation
+    generate_forecast_explanation,
+    generate_followup_response,
 )
 
 
@@ -26,8 +29,53 @@ from app.services.llm_service import (
 st.set_page_config(
     page_title="Enrolment Forecasting Assistant",
     page_icon="📊",
-    layout="wide"
+    layout="wide",
 )
+
+
+# --------------------------------------------------
+# INITIALISE SESSION STATE
+# --------------------------------------------------
+
+if "chat_history" not in st.session_state:
+    st.session_state.chat_history = []
+
+
+if "forecast_explanation" not in st.session_state:
+    st.session_state.forecast_explanation = None
+
+
+if "dataset_signature" not in st.session_state:
+    st.session_state.dataset_signature = None
+
+
+# --------------------------------------------------
+# SIDEBAR
+# --------------------------------------------------
+
+with st.sidebar:
+
+    st.header(
+        "Session Controls"
+    )
+
+    st.write(
+        "Conversation memory is stored only in the "
+        "current Streamlit session."
+    )
+
+    if st.button(
+        "New Session",
+        use_container_width=True,
+    ):
+
+        st.session_state.chat_history = []
+
+        st.session_state.forecast_explanation = None
+
+        st.session_state.dataset_signature = None
+
+        st.rerun()
 
 
 # --------------------------------------------------
@@ -42,16 +90,16 @@ st.title(
 st.write(
     """
     Upload your institution's historical enrolment data
-    to analyse trends, evaluate forecasting methods,
-    generate a next-year forecast, and receive an
-    AI-assisted planning explanation.
+    to analyse trends, compare forecasting methods,
+    generate a next-year forecast, and receive
+    AI-assisted explanations.
     """
 )
 
 st.info(
-    "Numerical calculations and forecasts are produced "
-    "by deterministic Python tools. The AI model is used "
-    "only to explain the calculated results."
+    "Numerical calculations are performed by "
+    "deterministic Python tools. The language model "
+    "is used for explanation and conversation."
 )
 
 
@@ -63,692 +111,16 @@ uploaded_file = st.file_uploader(
     "Upload enrolment data",
     type=[
         "csv",
-        "xlsx"
-    ]
+        "xlsx",
+    ],
 )
 
 
 # --------------------------------------------------
-# READ UPLOADED FILE
+# NO FILE
 # --------------------------------------------------
 
-if uploaded_file is not None:
-
-    try:
-
-        if uploaded_file.name.lower().endswith(
-            ".csv"
-        ):
-
-            raw_data = pd.read_csv(
-                uploaded_file
-            )
-
-        else:
-
-            raw_data = pd.read_excel(
-                uploaded_file
-            )
-
-    except Exception as error:
-
-        st.error(
-            "Unable to read the uploaded file: "
-            f"{error}"
-        )
-
-        st.stop()
-
-
-    # --------------------------------------------------
-    # DISPLAY ORIGINAL DATA
-    # --------------------------------------------------
-
-    st.subheader(
-        "Uploaded Data"
-    )
-
-    st.dataframe(
-        raw_data,
-        use_container_width=True
-    )
-
-
-    # --------------------------------------------------
-    # DATA VALIDATION
-    # --------------------------------------------------
-
-    st.subheader(
-        "Data Validation"
-    )
-
-    validation_result = (
-        validate_enrolment_data(
-            raw_data
-        )
-    )
-
-
-    if not validation_result[
-        "valid"
-    ]:
-
-        st.error(
-            "The uploaded data cannot currently "
-            "be used for analysis."
-        )
-
-        for error in (
-            validation_result[
-                "errors"
-            ]
-        ):
-
-            st.error(
-                error
-            )
-
-        st.stop()
-
-
-    # --------------------------------------------------
-    # VALID DATA
-    # --------------------------------------------------
-
-    st.success(
-        "The uploaded data passed the required "
-        "validation checks."
-    )
-
-    cleaned_data = (
-        validation_result[
-            "cleaned_data"
-        ]
-    )
-
-
-    # --------------------------------------------------
-    # VALIDATION WARNINGS
-    # --------------------------------------------------
-
-    for warning in (
-        validation_result[
-            "warnings"
-        ]
-    ):
-
-        st.warning(
-            warning
-        )
-
-
-    # --------------------------------------------------
-    # VALIDATION SUMMARY
-    # --------------------------------------------------
-
-    validation_summary = (
-        validation_result[
-            "summary"
-        ]
-    )
-
-    col1, col2, col3, col4 = (
-        st.columns(4)
-    )
-
-    col1.metric(
-        "Historical Years",
-        validation_summary[
-            "number_of_years"
-        ]
-    )
-
-    col2.metric(
-        "First Year",
-        validation_summary[
-            "first_year"
-        ]
-    )
-
-    col3.metric(
-        "Latest Year",
-        validation_summary[
-            "last_year"
-        ]
-    )
-
-    col4.metric(
-        "Latest Enrolment",
-        (
-            f"{validation_summary['latest_enrolment']:,.0f}"
-        )
-    )
-
-
-    # --------------------------------------------------
-    # HISTORICAL ENROLMENT CHART
-    # --------------------------------------------------
-
-    st.subheader(
-        "Historical Enrolment"
-    )
-
-    chart_data = (
-        cleaned_data[
-            [
-                "year",
-                "enrolment"
-            ]
-        ]
-        .set_index(
-            "year"
-        )
-    )
-
-    st.line_chart(
-        chart_data
-    )
-
-
-    # --------------------------------------------------
-    # TREND ANALYSIS
-    # --------------------------------------------------
-
-    st.subheader(
-        "Historical Trend Analysis"
-    )
-
-    try:
-
-        trend_result = (
-            analyse_enrolment_trend(
-                cleaned_data
-            )
-        )
-
-        trend = (
-            trend_result[
-                "summary"
-            ]
-        )
-
-
-        t1, t2, t3, t4 = (
-            st.columns(4)
-        )
-
-
-        t1.metric(
-            "Overall Trend",
-            trend[
-                "overall_direction"
-            ]
-        )
-
-
-        t2.metric(
-            "Recent Trend",
-            trend[
-                "recent_direction"
-            ]
-        )
-
-
-        t3.metric(
-            "Average Enrolment",
-            (
-                f"{trend['average_enrolment']:,.0f}"
-            )
-        )
-
-
-        if (
-            trend[
-                "percentage_change"
-            ]
-            is not None
-        ):
-
-            percentage_text = (
-                f"{trend['percentage_change']:.2f}%"
-            )
-
-        else:
-
-            percentage_text = "N/A"
-
-
-        t4.metric(
-            "Overall Change",
-            percentage_text
-        )
-
-
-        # --------------------------------------------------
-        # DETAILED TREND INFORMATION
-        # --------------------------------------------------
-
-        with st.expander(
-            "View detailed trend statistics"
-        ):
-
-            st.write(
-                "**Minimum enrolment:** "
-                f"{trend['minimum_enrolment']:,.0f}"
-            )
-
-            st.write(
-                "**Maximum enrolment:** "
-                f"{trend['maximum_enrolment']:,.0f}"
-            )
-
-            st.write(
-                "**Median enrolment:** "
-                f"{trend['median_enrolment']:,.0f}"
-            )
-
-            st.write(
-                "**Absolute change:** "
-                f"{trend['absolute_change']:,.0f}"
-            )
-
-            if (
-                trend["cagr"]
-                is not None
-            ):
-
-                st.write(
-                    "**CAGR:** "
-                    f"{trend['cagr']:.2f}%"
-                )
-
-            st.write(
-                "**Average annual change:** "
-                f"{trend['average_annual_change']:,.2f}"
-            )
-
-
-        # --------------------------------------------------
-        # ANNUAL CHANGES
-        # --------------------------------------------------
-
-        with st.expander(
-            "View annual changes"
-        ):
-
-            st.dataframe(
-                trend_result[
-                    "annual_changes"
-                ],
-                use_container_width=True
-            )
-
-
-    except Exception as error:
-
-        st.error(
-            "Trend analysis could not be completed: "
-            f"{error}"
-        )
-
-        st.stop()
-
-
-    # --------------------------------------------------
-    # FORECASTING
-    # --------------------------------------------------
-
-    st.subheader(
-        "Enrolment Forecast"
-    )
-
-    try:
-
-        forecast_result = (
-            run_forecasting_pipeline(
-                cleaned_data
-            )
-        )
-
-
-        # --------------------------------------------------
-        # MAIN FORECAST
-        # --------------------------------------------------
-
-        f1, f2, f3 = (
-            st.columns(3)
-        )
-
-
-        f1.metric(
-            "Forecast Year",
-            forecast_result[
-                "forecast_year"
-            ]
-        )
-
-
-        f2.metric(
-            "Predicted Enrolment",
-            (
-                f"{forecast_result['predicted_enrolment']:,.0f}"
-            )
-        )
-
-
-        f3.metric(
-            "Selected Model",
-            forecast_result[
-                "selected_model"
-            ]
-        )
-
-
-        # --------------------------------------------------
-        # BACKTEST PERFORMANCE
-        # --------------------------------------------------
-
-        st.markdown(
-            "### Backtest Performance"
-        )
-
-
-        m1, m2, m3, m4 = (
-            st.columns(4)
-        )
-
-
-        m1.metric(
-            "MAE",
-            f"{forecast_result['mae']:.2f}"
-        )
-
-
-        m2.metric(
-            "RMSE",
-            f"{forecast_result['rmse']:.2f}"
-        )
-
-
-        if (
-            forecast_result[
-                "mape"
-            ]
-            is not None
-        ):
-
-            mape_text = (
-                f"{forecast_result['mape']:.2f}%"
-            )
-
-        else:
-
-            mape_text = "N/A"
-
-
-        m3.metric(
-            "MAPE",
-            mape_text
-        )
-
-
-        m4.metric(
-            "Backtest Evidence",
-            forecast_result[
-                "backtest_evidence"
-            ]
-        )
-
-
-        # --------------------------------------------------
-        # MODEL COMPARISON
-        # --------------------------------------------------
-
-        with st.expander(
-            "Compare forecasting models"
-        ):
-
-            st.dataframe(
-                forecast_result[
-                    "model_metrics"
-                ],
-                use_container_width=True
-            )
-
-
-        # --------------------------------------------------
-        # SIMPLICITY RULE
-        # --------------------------------------------------
-
-        if forecast_result[
-            "simplicity_rule_applied"
-        ]:
-
-            st.info(
-                "The simplest model within 5% "
-                "of the lowest MAE was selected."
-            )
-
-
-        # --------------------------------------------------
-        # CAPACITY ANALYSIS
-        # --------------------------------------------------
-
-        latest_capacity = None
-        capacity_gap = None
-
-
-        if (
-            "capacity"
-            in cleaned_data.columns
-        ):
-
-            valid_capacity = (
-                cleaned_data[
-                    "capacity"
-                ]
-                .dropna()
-            )
-
-
-            if not valid_capacity.empty:
-
-                latest_capacity = float(
-                    valid_capacity.iloc[-1]
-                )
-
-
-                predicted_enrolment = (
-                    forecast_result[
-                        "predicted_enrolment"
-                    ]
-                )
-
-
-                capacity_gap = (
-                    predicted_enrolment
-                    - latest_capacity
-                )
-
-
-                st.markdown(
-                    "### Capacity Check"
-                )
-
-
-                c1, c2 = (
-                    st.columns(2)
-                )
-
-
-                c1.metric(
-                    "Latest Capacity",
-                    (
-                        f"{latest_capacity:,.0f}"
-                    )
-                )
-
-
-                c2.metric(
-                    "Forecast Capacity Gap",
-                    (
-                        f"{capacity_gap:,.0f}"
-                    )
-                )
-
-
-                if capacity_gap > 0:
-
-                    st.warning(
-                        "Forecast enrolment exceeds "
-                        "the supplied capacity."
-                    )
-
-                else:
-
-                    st.success(
-                        "Forecast enrolment remains "
-                        "within the supplied capacity."
-                    )
-
-
-        # --------------------------------------------------
-        # AI EXPLANATION
-        # --------------------------------------------------
-
-        st.divider()
-
-        st.subheader(
-            "AI-Assisted Forecast Explanation"
-        )
-
-        st.write(
-            "The AI does not calculate the forecast. "
-            "It receives the verified analytical results "
-            "above and explains them in plain language."
-        )
-
-
-        # Create a unique key for this analysis.
-        # This helps preserve the explanation across
-        # Streamlit reruns.
-        explanation_key = (
-            "forecast_explanation_"
-            f"{uploaded_file.name}_"
-            f"{forecast_result['forecast_year']}_"
-            f"{forecast_result['predicted_enrolment']:.2f}"
-        )
-
-
-        if st.button(
-            "Generate AI Explanation",
-            type="primary"
-        ):
-
-            # ------------------------------------------
-            # CHECK OLLAMA
-            # ------------------------------------------
-
-            if not check_ollama_connection():
-
-                st.error(
-                    "Ollama is not currently available. "
-                    "Make sure the Ollama service is running."
-                )
-
-            else:
-
-                with st.spinner(
-                    "Generating explanation..."
-                ):
-
-                    try:
-
-                        explanation = (
-                            generate_forecast_explanation(
-                                trend_summary=trend,
-                                forecast_result=forecast_result,
-                                capacity=latest_capacity
-                            )
-                        )
-
-
-                        st.session_state[
-                            explanation_key
-                        ] = explanation
-
-
-                    except Exception as error:
-
-                        st.error(
-                            "The AI explanation could not "
-                            "be generated."
-                        )
-
-                        st.error(
-                            str(error)
-                        )
-
-
-        # --------------------------------------------------
-        # DISPLAY SAVED EXPLANATION
-        # --------------------------------------------------
-
-        if (
-            explanation_key
-            in st.session_state
-        ):
-
-            st.markdown(
-                "### AI Explanation"
-            )
-
-            st.markdown(
-                st.session_state[
-                    explanation_key
-                ]
-            )
-
-
-            st.caption(
-                "AI-generated explanation based on "
-                "deterministic analytical and forecasting "
-                "results."
-            )
-
-
-        # --------------------------------------------------
-        # HUMAN REVIEW NOTICE
-        # --------------------------------------------------
-
-        st.divider()
-
-        st.warning(
-            "Forecasts are planning estimates and "
-            "should be reviewed by an authorised "
-            "institutional decision-maker before "
-            "staffing, budgeting, admissions, programme, "
-            "or capacity decisions are made."
-        )
-
-
-    except Exception as error:
-
-        st.warning(
-            "Historical analysis is available, but "
-            "forecasting could not be completed."
-        )
-
-        st.error(
-            str(error)
-        )
-
-
-# --------------------------------------------------
-# NO FILE UPLOADED
-# --------------------------------------------------
-
-else:
+if uploaded_file is None:
 
     st.write(
         "Upload a CSV or Excel file to begin."
@@ -758,3 +130,769 @@ else:
         "Required columns: year, enrolment. "
         "Optional column: capacity."
     )
+
+    st.stop()
+
+
+# --------------------------------------------------
+# CREATE DATASET SIGNATURE
+# --------------------------------------------------
+
+file_bytes = (
+    uploaded_file.getvalue()
+)
+
+dataset_signature = (
+    hashlib.sha256(
+        file_bytes
+    ).hexdigest()
+)
+
+
+# --------------------------------------------------
+# CLEAR OLD MEMORY IF DATASET CHANGES
+# --------------------------------------------------
+
+if (
+    st.session_state.dataset_signature
+    != dataset_signature
+):
+
+    st.session_state.dataset_signature = (
+        dataset_signature
+    )
+
+    st.session_state.chat_history = []
+
+    st.session_state.forecast_explanation = None
+
+
+# --------------------------------------------------
+# READ FILE
+# --------------------------------------------------
+
+try:
+
+    if uploaded_file.name.lower().endswith(
+        ".csv"
+    ):
+
+        raw_data = pd.read_csv(
+            uploaded_file
+        )
+
+    else:
+
+        raw_data = pd.read_excel(
+            uploaded_file
+        )
+
+
+except Exception as error:
+
+    st.error(
+        "Unable to read the uploaded file: "
+        f"{error}"
+    )
+
+    st.stop()
+
+
+# --------------------------------------------------
+# DISPLAY UPLOADED DATA
+# --------------------------------------------------
+
+st.subheader(
+    "Uploaded Data"
+)
+
+st.dataframe(
+    raw_data,
+    use_container_width=True,
+)
+
+
+# --------------------------------------------------
+# DATA VALIDATION
+# --------------------------------------------------
+
+st.subheader(
+    "Data Validation"
+)
+
+validation_result = (
+    validate_enrolment_data(
+        raw_data
+    )
+)
+
+
+if not validation_result["valid"]:
+
+    st.error(
+        "The uploaded data cannot currently "
+        "be used for analysis."
+    )
+
+    for error in (
+        validation_result["errors"]
+    ):
+
+        st.error(
+            error
+        )
+
+    st.stop()
+
+
+st.success(
+    "The uploaded data passed the required "
+    "validation checks."
+)
+
+
+cleaned_data = (
+    validation_result[
+        "cleaned_data"
+    ]
+)
+
+
+for warning in (
+    validation_result["warnings"]
+):
+
+    st.warning(
+        warning
+    )
+
+
+# --------------------------------------------------
+# VALIDATION SUMMARY
+# --------------------------------------------------
+
+validation_summary = (
+    validation_result["summary"]
+)
+
+
+col1, col2, col3, col4 = (
+    st.columns(4)
+)
+
+
+col1.metric(
+    "Historical Years",
+    validation_summary[
+        "number_of_years"
+    ],
+)
+
+
+col2.metric(
+    "First Year",
+    validation_summary[
+        "first_year"
+    ],
+)
+
+
+col3.metric(
+    "Latest Year",
+    validation_summary[
+        "last_year"
+    ],
+)
+
+
+col4.metric(
+    "Latest Enrolment",
+    (
+        f"{validation_summary['latest_enrolment']:,.0f}"
+    ),
+)
+
+
+# --------------------------------------------------
+# HISTORICAL CHART
+# --------------------------------------------------
+
+st.subheader(
+    "Historical Enrolment"
+)
+
+
+chart_data = (
+    cleaned_data[
+        [
+            "year",
+            "enrolment",
+        ]
+    ]
+    .set_index(
+        "year"
+    )
+)
+
+
+st.line_chart(
+    chart_data
+)
+
+
+# --------------------------------------------------
+# TREND ANALYSIS
+# --------------------------------------------------
+
+st.subheader(
+    "Historical Trend Analysis"
+)
+
+
+try:
+
+    trend_result = (
+        analyse_enrolment_trend(
+            cleaned_data
+        )
+    )
+
+    trend = (
+        trend_result[
+            "summary"
+        ]
+    )
+
+
+except Exception as error:
+
+    st.error(
+        "Trend analysis could not be completed: "
+        f"{error}"
+    )
+
+    st.stop()
+
+
+t1, t2, t3, t4 = (
+    st.columns(4)
+)
+
+
+t1.metric(
+    "Overall Trend",
+    trend[
+        "overall_direction"
+    ],
+)
+
+
+t2.metric(
+    "Recent Trend",
+    trend[
+        "recent_direction"
+    ],
+)
+
+
+t3.metric(
+    "Average Enrolment",
+    (
+        f"{trend['average_enrolment']:,.0f}"
+    ),
+)
+
+
+if (
+    trend[
+        "percentage_change"
+    ]
+    is not None
+):
+
+    percentage_text = (
+        f"{trend['percentage_change']:.2f}%"
+    )
+
+else:
+
+    percentage_text = "N/A"
+
+
+t4.metric(
+    "Overall Change",
+    percentage_text,
+)
+
+
+with st.expander(
+    "View detailed trend statistics"
+):
+
+    st.write(
+        "**Minimum enrolment:** "
+        f"{trend['minimum_enrolment']:,.0f}"
+    )
+
+    st.write(
+        "**Maximum enrolment:** "
+        f"{trend['maximum_enrolment']:,.0f}"
+    )
+
+    st.write(
+        "**Median enrolment:** "
+        f"{trend['median_enrolment']:,.0f}"
+    )
+
+    st.write(
+        "**Absolute change:** "
+        f"{trend['absolute_change']:,.0f}"
+    )
+
+    if trend["cagr"] is not None:
+
+        st.write(
+            "**CAGR:** "
+            f"{trend['cagr']:.2f}%"
+        )
+
+    st.write(
+        "**Average annual change:** "
+        f"{trend['average_annual_change']:,.2f}"
+    )
+
+
+with st.expander(
+    "View annual changes"
+):
+
+    st.dataframe(
+        trend_result[
+            "annual_changes"
+        ],
+        use_container_width=True,
+    )
+
+
+# --------------------------------------------------
+# FORECASTING
+# --------------------------------------------------
+
+st.subheader(
+    "Enrolment Forecast"
+)
+
+
+try:
+
+    forecast_result = (
+        run_forecasting_pipeline(
+            cleaned_data
+        )
+    )
+
+
+except Exception as error:
+
+    st.warning(
+        "Historical analysis is available, but "
+        "forecasting could not be completed."
+    )
+
+    st.error(
+        str(error)
+    )
+
+    st.stop()
+
+
+# --------------------------------------------------
+# FORECAST SUMMARY
+# --------------------------------------------------
+
+f1, f2, f3 = (
+    st.columns(3)
+)
+
+
+f1.metric(
+    "Forecast Year",
+    forecast_result[
+        "forecast_year"
+    ],
+)
+
+
+f2.metric(
+    "Predicted Enrolment",
+    (
+        f"{forecast_result['predicted_enrolment']:,.0f}"
+    ),
+)
+
+
+f3.metric(
+    "Selected Model",
+    forecast_result[
+        "selected_model"
+    ],
+)
+
+
+# --------------------------------------------------
+# BACKTEST PERFORMANCE
+# --------------------------------------------------
+
+st.markdown(
+    "### Backtest Performance"
+)
+
+
+m1, m2, m3, m4 = (
+    st.columns(4)
+)
+
+
+m1.metric(
+    "MAE",
+    f"{forecast_result['mae']:.2f}",
+)
+
+
+m2.metric(
+    "RMSE",
+    f"{forecast_result['rmse']:.2f}",
+)
+
+
+if forecast_result["mape"] is not None:
+
+    mape_text = (
+        f"{forecast_result['mape']:.2f}%"
+    )
+
+else:
+
+    mape_text = "N/A"
+
+
+m3.metric(
+    "MAPE",
+    mape_text,
+)
+
+
+m4.metric(
+    "Backtest Evidence",
+    forecast_result[
+        "backtest_evidence"
+    ],
+)
+
+
+with st.expander(
+    "Compare forecasting models"
+):
+
+    st.dataframe(
+        forecast_result[
+            "model_metrics"
+        ],
+        use_container_width=True,
+    )
+
+
+if forecast_result[
+    "simplicity_rule_applied"
+]:
+
+    st.info(
+        "The simplest model within 5% "
+        "of the lowest MAE was selected."
+    )
+
+
+# --------------------------------------------------
+# CAPACITY
+# --------------------------------------------------
+
+latest_capacity = None
+
+
+if "capacity" in cleaned_data.columns:
+
+    valid_capacity = (
+        cleaned_data[
+            "capacity"
+        ]
+        .dropna()
+    )
+
+
+    if not valid_capacity.empty:
+
+        latest_capacity = float(
+            valid_capacity.iloc[-1]
+        )
+
+        capacity_gap = (
+            forecast_result[
+                "predicted_enrolment"
+            ]
+            - latest_capacity
+        )
+
+
+        st.markdown(
+            "### Capacity Check"
+        )
+
+
+        c1, c2 = (
+            st.columns(2)
+        )
+
+
+        c1.metric(
+            "Latest Capacity",
+            f"{latest_capacity:,.0f}",
+        )
+
+
+        c2.metric(
+            "Forecast Capacity Gap",
+            f"{capacity_gap:,.0f}",
+        )
+
+
+        if capacity_gap > 0:
+
+            st.warning(
+                "Forecast enrolment exceeds "
+                "the supplied capacity."
+            )
+
+        else:
+
+            st.success(
+                "Forecast enrolment remains "
+                "within the supplied capacity."
+            )
+
+
+# --------------------------------------------------
+# AI FORECAST EXPLANATION
+# --------------------------------------------------
+
+st.divider()
+
+st.subheader(
+    "AI-Assisted Forecast Explanation"
+)
+
+
+st.write(
+    "Qwen3 explains the verified analytical "
+    "results using the selected Prompt C."
+)
+
+
+if st.button(
+    "Generate AI Explanation",
+    type="primary",
+):
+
+    if not check_ollama_connection():
+
+        st.error(
+            "Ollama is not available. "
+            "Make sure Ollama is running."
+        )
+
+    else:
+
+        with st.spinner(
+            "Generating explanation..."
+        ):
+
+            try:
+
+                explanation = (
+                    generate_forecast_explanation(
+                        trend_summary=trend,
+                        forecast_result=forecast_result,
+                        capacity=latest_capacity,
+
+                        # Production prompt selected
+                        # after A/B/C evaluation.
+                        prompt_variant="C",
+                    )
+                )
+
+
+                st.session_state[
+                    "forecast_explanation"
+                ] = explanation
+
+
+            except Exception as error:
+
+                st.error(
+                    "The AI explanation could not "
+                    "be generated."
+                )
+
+                st.error(
+                    str(error)
+                )
+
+
+if (
+    st.session_state.forecast_explanation
+    is not None
+):
+
+    st.markdown(
+        "### AI Explanation"
+    )
+
+    st.markdown(
+        st.session_state.forecast_explanation
+    )
+
+
+# --------------------------------------------------
+# MULTI-TURN CONVERSATION
+# --------------------------------------------------
+
+st.divider()
+
+st.subheader(
+    "Ask Follow-Up Questions"
+)
+
+
+st.caption(
+    "Conversation history is retained within "
+    "this Streamlit session and is cleared when "
+    "you start a new session or upload different data."
+)
+
+
+# --------------------------------------------------
+# DISPLAY CONVERSATION HISTORY
+# --------------------------------------------------
+
+for message in (
+    st.session_state.chat_history
+):
+
+    with st.chat_message(
+        message["role"]
+    ):
+
+        st.markdown(
+            message["content"]
+        )
+
+
+# --------------------------------------------------
+# CHAT INPUT
+# --------------------------------------------------
+
+user_question = st.chat_input(
+    "Ask a question about the enrolment analysis..."
+)
+
+
+if user_question:
+
+    # Store user message
+    st.session_state.chat_history.append({
+        "role": "user",
+        "content": user_question,
+    })
+
+
+    # Display user message
+    with st.chat_message(
+        "user"
+    ):
+
+        st.markdown(
+            user_question
+        )
+
+
+    # Check Ollama
+    if not check_ollama_connection():
+
+        assistant_response = (
+            "The AI service is currently unavailable. "
+            "Please ensure Ollama is running."
+        )
+
+
+    else:
+
+        with st.chat_message(
+            "assistant"
+        ):
+
+            with st.spinner(
+                "Thinking..."
+            ):
+
+                try:
+
+                    assistant_response = (
+                        generate_followup_response(
+                            trend_summary=trend,
+                            forecast_result=forecast_result,
+
+                            # Do not include the newly
+                            # appended current user message
+                            # twice.
+                            conversation_history=(
+                                st.session_state
+                                .chat_history[:-1]
+                            ),
+
+                            user_message=user_question,
+
+                            capacity=latest_capacity,
+                        )
+                    )
+
+
+                except Exception as error:
+
+                    assistant_response = (
+                        "I could not answer the question: "
+                        f"{error}"
+                    )
+
+
+            st.markdown(
+                assistant_response
+            )
+
+
+    # Store assistant response
+    st.session_state.chat_history.append({
+        "role": "assistant",
+        "content": assistant_response,
+    })
+
+
+# --------------------------------------------------
+# HUMAN REVIEW
+# --------------------------------------------------
+
+st.divider()
+
+st.warning(
+    "Forecasts and AI explanations are planning "
+    "support only. Final institutional decisions "
+    "remain subject to authorised human review."
+)
