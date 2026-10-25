@@ -25,6 +25,10 @@ from app.services.structured_output import (
     generate_structured_forecast_explanation,
 )
 
+from app.services.document_processing import (
+    process_uploaded_document,
+)
+
 
 # --------------------------------------------------
 # PAGE CONFIGURATION
@@ -54,6 +58,12 @@ if "structured_explanation" not in st.session_state:
 if "dataset_signature" not in st.session_state:
     st.session_state.dataset_signature = None
 
+if "knowledge_chunks" not in st.session_state:
+    st.session_state.knowledge_chunks = []
+
+if "knowledge_upload_version" not in st.session_state:
+    st.session_state.knowledge_upload_version = 0
+
 
 # --------------------------------------------------
 # SIDEBAR
@@ -82,6 +92,10 @@ with st.sidebar:
         st.session_state.dataset_signature = None
 
         st.session_state.structured_explanation = None
+
+        st.session_state.knowledge_chunks = []
+
+        st.session_state.knowledge_upload_version += 1
 
         st.rerun()
 
@@ -175,6 +189,8 @@ if (
     st.session_state.forecast_explanation = None
 
     st.session_state.structured_explanation = None
+
+    st.session_state.knowledge_chunks = [] 
 
 
 # --------------------------------------------------
@@ -689,6 +705,153 @@ if "capacity" in cleaned_data.columns:
                 "within the supplied capacity."
             )
 
+
+# --------------------------------------------------
+# INSTITUTIONAL KNOWLEDGE DOCUMENTS
+# --------------------------------------------------
+
+st.divider()
+
+st.subheader(
+    "Institutional Knowledge Documents"
+)
+
+st.write(
+    "Upload planning documents, policies or reports "
+    "to prepare institution-specific knowledge "
+    "for the AI assistant."
+)
+
+st.caption(
+    "Supported formats: PDF, DOCX and TXT. "
+    "Maximum file size: 10 MB per document. "
+    "Maximum documents: 5."
+)
+
+
+# Give the uploader a different identity when
+# the dataset changes or a new session begins.
+
+document_widget_key = (
+    f"institution_docs_"
+    f"{st.session_state.knowledge_upload_version}_"
+    f"{dataset_signature}"
+)
+
+
+uploaded_documents = st.file_uploader(
+    "Upload institutional documents",
+    type=["pdf", "docx", "txt"],
+    accept_multiple_files=True,
+    key=document_widget_key,
+)
+
+
+# Rebuild the active session's chunks from
+# the currently uploaded documents.
+
+st.session_state.knowledge_chunks = []
+
+
+if uploaded_documents:
+
+    if len(uploaded_documents) > 5:
+
+        st.error(
+            "Please upload no more than five documents."
+        )
+
+    else:
+
+        seen_sources = set()
+
+        for uploaded_document in uploaded_documents:
+
+            result = process_uploaded_document(
+                uploaded_document
+            )
+
+            if not result["success"]:
+
+                st.error(
+                    f"Could not process "
+                    f"{uploaded_document.name}"
+                )
+
+                for error in result["errors"]:
+                    st.write(error)
+
+                continue
+
+
+            # Avoid including identical file contents twice.
+
+            if result["source_id"] in seen_sources:
+
+                st.warning(
+                    f"{uploaded_document.name} is a "
+                    "duplicate of a document already uploaded."
+                )
+
+                continue
+
+            seen_sources.add(
+                result["source_id"]
+            )
+
+
+            # Keep successfully processed chunks
+            # in the current Streamlit session.
+
+            st.session_state.knowledge_chunks.extend(
+                result["chunks"]
+            )
+
+
+            st.success(
+                f"Processed: {uploaded_document.name}"
+            )
+
+            st.write(
+                f"Chunks created: "
+                f"{result['summary']['total_chunks']}"
+            )
+
+
+            for warning in result["warnings"]:
+                st.warning(warning)
+
+
+            # Show metadata without automatically
+            # exposing the full document text.
+
+            with st.expander(
+                f"View metadata: {uploaded_document.name}"
+            ):
+
+                st.json({
+                    "source_name": result["source_name"],
+                    "source_id": result["source_id"],
+                    "file_type": result["file_type"],
+                    "total_chunks": result["summary"]["total_chunks"],
+                    "units_with_text": result["summary"]["units_with_text"],
+                })
+
+
+if st.session_state.knowledge_chunks:
+
+    st.info(
+        f"Total knowledge chunks prepared: "
+        f"{len(st.session_state.knowledge_chunks)}"
+    )
+
+else:
+
+    st.info(
+        "No usable institutional knowledge is currently "
+        "available. Document-based answers will require "
+        "uploaded and retrievable evidence."
+    )
 
 # --------------------------------------------------
 # STRUCTURED AI FORECAST EXPLANATION
