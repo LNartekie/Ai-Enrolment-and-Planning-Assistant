@@ -8,3 +8,5 @@ python-dotenv
 pydantic
 pytest
 requests
+pypdf
+python-docx
