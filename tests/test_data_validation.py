@@ -276,3 +276,4 @@ def test_zero_enrolment_warning():
         in warning.lower()
         for warning in result["warnings"]
     )
+    

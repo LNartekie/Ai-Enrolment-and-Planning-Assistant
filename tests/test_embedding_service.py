@@ -117,3 +117,4 @@ def test_embed_query(monkeypatch):
 
     assert result == [0.7, 0.8, 0.9]
 
+
