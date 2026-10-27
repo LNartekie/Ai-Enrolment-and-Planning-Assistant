@@ -154,11 +154,82 @@ for number, item in enumerate(questions, start=1):
     print("Question:", item["question"])
     print("Expected:", item["expected"])
 
+        # --------------------------------------------------
+    # DIAGNOSE RETRIEVED EVIDENCE FOR Q5 AND Q6
+    # --------------------------------------------------
+
+    if number in (5, 6):
+
+        print("\nRETRIEVAL DIAGNOSTICS")
+        print("-" * 50)
+
+        # Examine more candidates for Question 5.
+        # Keep Question 6 at three candidates.
+
+        diagnostic_top_k = (
+            8 if number == 5 else 3
+        )
+
+        diagnostic_matches = index.search(
+            question=item["question"],
+            top_k=diagnostic_top_k,
+            min_similarity=0.65,
+        )
+
+        print(
+            "Number of retrieved passages:",
+            len(diagnostic_matches),
+        )
+
+        for rank, match in enumerate(
+            diagnostic_matches,
+            start=1,
+        ):
+
+            print(f"\nPASSAGE {rank}")
+
+            print(
+                "Similarity:",
+                round(match["similarity_score"], 4),
+            )
+
+            print(
+                "Page:",
+                match["page_number"],
+            )
+
+            print(
+                "Chunk ID:",
+                match["chunk_id"],
+            )
+
+            # Look for evidence about variance reviews.
+
+            contains_variance_review = (
+                "variance review"
+                in match["text"].lower()
+            )
+
+            print(
+                "Mentions variance review:",
+                contains_variance_review,
+            )
+
+            print("\nRETRIEVED TEXT:")
+            print(match["text"])
+
+            print("-" * 50)
+
+
+# --------------------------------------------------
+# GENERATE RAG ANSWER
+# --------------------------------------------------
+
     try:
         result = answer_document_question(
             question=item["question"],
             index=index,
-            top_k=3,
+            top_k=5,
             min_similarity=0.65,
         )
 
