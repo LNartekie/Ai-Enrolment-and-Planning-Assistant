@@ -168,14 +168,18 @@ try:
         start=1,
     ):
 
-        print("\n" + "-" * 60)
-        print(f"QUESTION {number}")
-        print("-" * 60)
+# Temporarily evaluate only Question 6
+     if number != 6:
+            continue
 
-        print("Question:", item["question"])
-        print("Expected:", item["expected"])
+    print("\n" + "-" * 60)
+    print(f"QUESTION {number}")
+    print("-" * 60)
 
-        try:
+    print("Question:", item["question"])
+    print("Expected:", item["expected"])
+
+    try:
 
             result = answer_document_question_structured(
                 question=item["question"],
@@ -211,7 +215,7 @@ try:
                         f"chunk {source['chunk_id']})"
                     )
 
-        except Exception as error:
+    except Exception as error:
 
             print("\nERROR:")
             print(type(error).__name__)

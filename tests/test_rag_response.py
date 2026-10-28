@@ -85,4 +85,30 @@ def test_unexpected_field_rejected():
             "citations": ["S1"],
             "invented_field": "extra content",
         })
-        
+
+def test_answer_admitting_missing_policy_rejected():
+
+    with pytest.raises(ValidationError):
+
+        RAGDecision(
+            status="answered",
+            answer=(
+                "The requested policy is not "
+                "explicitly detailed in the "
+                "provided evidence."
+            ),
+            citations=["S1"],
+        )
+
+
+def test_unrelated_policy_abstention_accepted():
+
+    response = RAGDecision(
+        status="insufficient_evidence",
+        answer=None,
+        citations=[],
+    )
+
+    assert response.status == "insufficient_evidence"
+    assert response.answer is None
+    assert response.citations == []        

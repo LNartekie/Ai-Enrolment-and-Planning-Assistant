@@ -29,6 +29,9 @@ from app.services.document_processing import (
     process_uploaded_document,
 )
 
+from app.services.structured_rag_service import (
+    answer_document_question_structured,
+)
 
 # --------------------------------------------------
 # PAGE CONFIGURATION

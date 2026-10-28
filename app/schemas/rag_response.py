@@ -54,6 +54,29 @@ class RAGDecision(BaseModel):
                     "also claim insufficient evidence."
                 )
 
+
+            unsupported_answer_phrases = (
+                "not explicitly detailed",
+                "not specified in",
+                "not addressed in",
+                "not covered by",
+                "does not provide information",
+                "no information is provided",
+                "cannot determine from",
+            )
+
+            answer_text = self.answer.casefold()
+
+            if any(
+                phrase in answer_text
+                for phrase in unsupported_answer_phrases
+            ):
+                raise ValueError(
+                    "An answered response indicates that "
+                    "the requested information is not "
+                    "established by the evidence."
+                )
+
         elif self.status == "insufficient_evidence":
 
             if self.answer is not None:
