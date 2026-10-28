@@ -2,6 +2,9 @@ import hashlib
 
 import pandas as pd
 import streamlit as st
+import hashlib
+
+from app.services.retrieval_service import SessionVectorIndex
 
 from app.services.data_validation import (
     validate_enrolment_data,
@@ -66,6 +69,195 @@ if "knowledge_chunks" not in st.session_state:
 
 if "knowledge_upload_version" not in st.session_state:
     st.session_state.knowledge_upload_version = 0
+
+
+# --------------------------------------------------
+# DOCUMENT QUESTION ANSWERING WITH STRUCTURED RAG
+# --------------------------------------------------
+
+st.subheader("Ask Questions About Institutional Policies")
+
+# Initialise the RAG session state.
+if "rag_vector_index" not in st.session_state:
+    st.session_state.rag_vector_index = None
+
+if "rag_index_signature" not in st.session_state:
+    st.session_state.rag_index_signature = None
+
+
+knowledge_chunks = st.session_state.get(
+    "knowledge_chunks", []
+)
+
+if not knowledge_chunks:
+
+    # Clear old document vectors if all documents
+    # have been removed from the active session.
+    if st.session_state.rag_vector_index is not None:
+        st.session_state.rag_vector_index.clear()
+
+    st.session_state.rag_vector_index = None
+    st.session_state.rag_index_signature = None
+
+    st.info(
+        "Upload an institutional policy document "
+        "to enable document-based questions."
+    )
+
+else:
+
+    st.caption(
+        f"{len(knowledge_chunks)} document passages "
+        "available for retrieval."
+    )
+
+    # Fingerprint the content of the uploaded chunks.
+    # This helps detect when the document set changes.
+    signature_hasher = hashlib.sha256()
+
+    for chunk in knowledge_chunks:
+        signature_hasher.update(
+            str(chunk.get("chunk_id", "")).encode("utf-8")
+        )
+        signature_hasher.update(
+            str(chunk.get("text", "")).encode("utf-8")
+        )
+
+    current_signature = signature_hasher.hexdigest()
+
+    # Rebuild only when the uploaded document
+    # content differs from the indexed content.
+    if (
+        st.session_state.rag_index_signature
+        != current_signature
+    ):
+
+        if st.session_state.rag_vector_index is not None:
+            st.session_state.rag_vector_index.clear()
+
+        st.session_state.rag_vector_index = None
+        st.session_state.rag_index_signature = None
+
+        try:
+
+            with st.spinner(
+                "Preparing institutional document search..."
+            ):
+
+                new_index = SessionVectorIndex()
+                new_index.build(knowledge_chunks)
+
+                st.session_state.rag_vector_index = new_index
+                st.session_state.rag_index_signature = (
+                    current_signature
+                )
+
+            st.success(
+                "Institutional document search is ready."
+            )
+
+        except Exception:
+            st.error(
+                "The document search index could not "
+                "be prepared. Check that Ollama and "
+                "the embedding model are available."
+            )
+
+    # Show the question interface only if indexing succeeded.
+    if st.session_state.rag_vector_index is not None:
+
+        with st.form("institutional_policy_question_form"):
+
+            policy_question = st.text_input(
+                "Your institutional policy question",
+                placeholder=(
+                    "What happens when student enrolment "
+                    "exceeds approved capacity?"
+                ),
+            )
+
+            ask_policy = st.form_submit_button(
+                "Ask institutional policy assistant"
+            )
+
+        if ask_policy:
+
+            if not policy_question.strip():
+
+                st.warning(
+                    "Please enter a question."
+                )
+
+            else:
+
+                try:
+
+                    with st.spinner(
+                        "Searching documents and "
+                        "validating the response..."
+                    ):
+
+                        rag_result = (
+                            answer_document_question_structured(
+                                question=policy_question,
+                                index=st.session_state.rag_vector_index,
+                                top_k=5,
+                                min_similarity=0.65,
+                            )
+                        )
+
+                    if rag_result["status"] == "answered":
+
+                        st.markdown("**Document-grounded answer**")
+                        st.write(rag_result["answer"])
+
+                        if rag_result["sources"]:
+
+                            with st.expander(
+                                "View supporting document sources"
+                            ):
+
+                                for source in rag_result["sources"]:
+
+                                    page = source.get(
+                                        "page_number"
+                                    )
+
+                                    page_display = (
+                                        f"Page {page}"
+                                        if page is not None
+                                        else "Page not available"
+                                    )
+
+                                    st.write(
+                                        f"[{source['citation']}] "
+                                        f"{source['source_name']} "
+                                        f"— {page_display}"
+                                    )
+
+                    else:
+
+                        st.info(
+                            "The uploaded documents do not "
+                            "establish an answer to this question."
+                        )
+
+                except (RuntimeError, ValueError):
+
+                    st.warning(
+                        "The assistant could not produce "
+                        "a validated answer. Try rephrasing "
+                        "your question or reviewing the "
+                        "uploaded documents."
+                    )
+
+        st.caption(
+            "Answers are AI-generated. Source references "
+            "identify retrieved passages but do not "
+            "guarantee that every claim is supported. "
+            "Verify important institutional decisions "
+            "against the original documents."
+        )
 
 
 # --------------------------------------------------
