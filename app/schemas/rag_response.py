@@ -54,7 +54,6 @@ class RAGDecision(BaseModel):
                     "also claim insufficient evidence."
                 )
 
-
             unsupported_answer_phrases = (
                 "not explicitly detailed",
                 "not specified in",

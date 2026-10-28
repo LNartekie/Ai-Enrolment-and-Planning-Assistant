@@ -36,6 +36,11 @@ from app.services.structured_rag_service import (
     answer_document_question_structured,
 )
 
+from app.services.tool_calling_service import (
+    explain_capacity_with_tool,
+)
+
+
 # --------------------------------------------------
 # PAGE CONFIGURATION
 # --------------------------------------------------
@@ -70,194 +75,6 @@ if "knowledge_chunks" not in st.session_state:
 if "knowledge_upload_version" not in st.session_state:
     st.session_state.knowledge_upload_version = 0
 
-
-# --------------------------------------------------
-# DOCUMENT QUESTION ANSWERING WITH STRUCTURED RAG
-# --------------------------------------------------
-
-st.subheader("Ask Questions About Institutional Policies")
-
-# Initialise the RAG session state.
-if "rag_vector_index" not in st.session_state:
-    st.session_state.rag_vector_index = None
-
-if "rag_index_signature" not in st.session_state:
-    st.session_state.rag_index_signature = None
-
-
-knowledge_chunks = st.session_state.get(
-    "knowledge_chunks", []
-)
-
-if not knowledge_chunks:
-
-    # Clear old document vectors if all documents
-    # have been removed from the active session.
-    if st.session_state.rag_vector_index is not None:
-        st.session_state.rag_vector_index.clear()
-
-    st.session_state.rag_vector_index = None
-    st.session_state.rag_index_signature = None
-
-    st.info(
-        "Upload an institutional policy document "
-        "to enable document-based questions."
-    )
-
-else:
-
-    st.caption(
-        f"{len(knowledge_chunks)} document passages "
-        "available for retrieval."
-    )
-
-    # Fingerprint the content of the uploaded chunks.
-    # This helps detect when the document set changes.
-    signature_hasher = hashlib.sha256()
-
-    for chunk in knowledge_chunks:
-        signature_hasher.update(
-            str(chunk.get("chunk_id", "")).encode("utf-8")
-        )
-        signature_hasher.update(
-            str(chunk.get("text", "")).encode("utf-8")
-        )
-
-    current_signature = signature_hasher.hexdigest()
-
-    # Rebuild only when the uploaded document
-    # content differs from the indexed content.
-    if (
-        st.session_state.rag_index_signature
-        != current_signature
-    ):
-
-        if st.session_state.rag_vector_index is not None:
-            st.session_state.rag_vector_index.clear()
-
-        st.session_state.rag_vector_index = None
-        st.session_state.rag_index_signature = None
-
-        try:
-
-            with st.spinner(
-                "Preparing institutional document search..."
-            ):
-
-                new_index = SessionVectorIndex()
-                new_index.build(knowledge_chunks)
-
-                st.session_state.rag_vector_index = new_index
-                st.session_state.rag_index_signature = (
-                    current_signature
-                )
-
-            st.success(
-                "Institutional document search is ready."
-            )
-
-        except Exception:
-            st.error(
-                "The document search index could not "
-                "be prepared. Check that Ollama and "
-                "the embedding model are available."
-            )
-
-    # Show the question interface only if indexing succeeded.
-    if st.session_state.rag_vector_index is not None:
-
-        with st.form("institutional_policy_question_form"):
-
-            policy_question = st.text_input(
-                "Your institutional policy question",
-                placeholder=(
-                    "What happens when student enrolment "
-                    "exceeds approved capacity?"
-                ),
-            )
-
-            ask_policy = st.form_submit_button(
-                "Ask institutional policy assistant"
-            )
-
-        if ask_policy:
-
-            if not policy_question.strip():
-
-                st.warning(
-                    "Please enter a question."
-                )
-
-            else:
-
-                try:
-
-                    with st.spinner(
-                        "Searching documents and "
-                        "validating the response..."
-                    ):
-
-                        rag_result = (
-                            answer_document_question_structured(
-                                question=policy_question,
-                                index=st.session_state.rag_vector_index,
-                                top_k=5,
-                                min_similarity=0.65,
-                            )
-                        )
-
-                    if rag_result["status"] == "answered":
-
-                        st.markdown("**Document-grounded answer**")
-                        st.write(rag_result["answer"])
-
-                        if rag_result["sources"]:
-
-                            with st.expander(
-                                "View supporting document sources"
-                            ):
-
-                                for source in rag_result["sources"]:
-
-                                    page = source.get(
-                                        "page_number"
-                                    )
-
-                                    page_display = (
-                                        f"Page {page}"
-                                        if page is not None
-                                        else "Page not available"
-                                    )
-
-                                    st.write(
-                                        f"[{source['citation']}] "
-                                        f"{source['source_name']} "
-                                        f"— {page_display}"
-                                    )
-
-                    else:
-
-                        st.info(
-                            "The uploaded documents do not "
-                            "establish an answer to this question."
-                        )
-
-                except (RuntimeError, ValueError):
-
-                    st.warning(
-                        "The assistant could not produce "
-                        "a validated answer. Try rephrasing "
-                        "your question or reviewing the "
-                        "uploaded documents."
-                    )
-
-        st.caption(
-            "Answers are AI-generated. Source references "
-            "identify retrieved passages but do not "
-            "guarantee that every claim is supported. "
-            "Verify important institutional decisions "
-            "against the original documents."
-        )
 
 
 # --------------------------------------------------
@@ -1047,6 +864,272 @@ else:
         "available. Document-based answers will require "
         "uploaded and retrievable evidence."
     )
+
+# --------------------------------------------------
+# DOCUMENT QUESTION ANSWERING WITH STRUCTURED RAG
+# --------------------------------------------------
+
+st.subheader("Ask Questions About Institutional Policies")
+
+# Initialise the RAG session state.
+if "rag_vector_index" not in st.session_state:
+    st.session_state.rag_vector_index = None
+
+if "rag_index_signature" not in st.session_state:
+    st.session_state.rag_index_signature = None
+
+
+knowledge_chunks = st.session_state.get(
+    "knowledge_chunks", []
+)
+
+if not knowledge_chunks:
+
+    # Clear old document vectors if all documents
+    # have been removed from the active session.
+    if st.session_state.rag_vector_index is not None:
+        st.session_state.rag_vector_index.clear()
+
+    st.session_state.rag_vector_index = None
+    st.session_state.rag_index_signature = None
+
+    st.info(
+        "Upload an institutional policy document "
+        "to enable document-based questions."
+    )
+
+else:
+
+    st.caption(
+        f"{len(knowledge_chunks)} document passages "
+        "available for retrieval."
+    )
+
+    # Fingerprint the content of the uploaded chunks.
+    # This helps detect when the document set changes.
+    signature_hasher = hashlib.sha256()
+
+    for chunk in knowledge_chunks:
+        signature_hasher.update(
+            str(chunk.get("chunk_id", "")).encode("utf-8")
+        )
+        signature_hasher.update(
+            str(chunk.get("text", "")).encode("utf-8")
+        )
+
+    current_signature = signature_hasher.hexdigest()
+
+    # Rebuild only when the uploaded document
+    # content differs from the indexed content.
+    if (
+        st.session_state.rag_index_signature
+        != current_signature
+    ):
+
+        if st.session_state.rag_vector_index is not None:
+            st.session_state.rag_vector_index.clear()
+
+        st.session_state.rag_vector_index = None
+        st.session_state.rag_index_signature = None
+
+        try:
+
+            with st.spinner(
+                "Preparing institutional document search..."
+            ):
+
+                new_index = SessionVectorIndex()
+                new_index.build(knowledge_chunks)
+
+                st.session_state.rag_vector_index = new_index
+                st.session_state.rag_index_signature = (
+                    current_signature
+                )
+
+            st.success(
+                "Institutional document search is ready."
+            )
+
+        except Exception:
+            st.error(
+                "The document search index could not "
+                "be prepared. Check that Ollama and "
+                "the embedding model are available."
+            )
+
+    # Show the question interface only if indexing succeeded.
+    if st.session_state.rag_vector_index is not None:
+
+        with st.form("institutional_policy_question_form"):
+
+            policy_question = st.text_input(
+                "Your institutional policy question",
+                placeholder=(
+                    "What happens when student enrolment "
+                    "exceeds approved capacity?"
+                ),
+            )
+
+            ask_policy = st.form_submit_button(
+                "Ask institutional policy assistant"
+            )
+
+        if ask_policy:
+
+            if not policy_question.strip():
+
+                st.warning(
+                    "Please enter a question."
+                )
+
+            else:
+
+                try:
+
+                    with st.spinner(
+                        "Searching documents and "
+                        "validating the response..."
+                    ):
+
+                        rag_result = (
+                            answer_document_question_structured(
+                                question=policy_question,
+                                index=st.session_state.rag_vector_index,
+                                top_k=5,
+                                min_similarity=0.65,
+                            )
+                        )
+
+                    if rag_result["status"] == "answered":
+
+                        st.markdown("**Document-grounded answer**")
+                        st.write(rag_result["answer"])
+
+                        if rag_result["sources"]:
+
+                            with st.expander(
+                                "View supporting document sources"
+                            ):
+
+                                for source in rag_result["sources"]:
+
+                                    page = source.get(
+                                        "page_number"
+                                    )
+
+                                    page_display = (
+                                        f"Page {page}"
+                                        if page is not None
+                                        else "Page not available"
+                                    )
+
+                                    st.write(
+                                        f"[{source['citation']}] "
+                                        f"{source['source_name']} "
+                                        f"— {page_display}"
+                                    )
+
+                    else:
+
+                        st.info(
+                            "The uploaded documents do not "
+                            "establish an answer to this question."
+                        )
+
+                except (RuntimeError, ValueError):
+
+                    st.warning(
+                        "The assistant could not produce "
+                        "a validated answer. Try rephrasing "
+                        "your question or reviewing the "
+                        "uploaded documents."
+                    )
+
+        st.caption(
+            "Answers are AI-generated. Source references "
+            "identify retrieved passages but do not "
+            "guarantee that every claim is supported. "
+            "Verify important institutional decisions "
+            "against the original documents."
+        )
+
+
+# --------------------------------------------------
+# AI CAPACITY PLANNING
+# --------------------------------------------------
+
+st.subheader("AI Capacity Planning Analysis")
+
+with st.form("capacity_planning_form"):
+
+    forecast_input = st.number_input(
+        "Forecast Enrolment",
+        min_value=0,
+        value=1900,
+        step=1,
+    )
+
+    capacity_input = st.number_input(
+        "Approved Capacity",
+        min_value=1,
+        value=1800,
+        step=1,
+    )
+
+    analyse_button = st.form_submit_button(
+        "Analyse Capacity"
+    )
+
+
+if analyse_button:
+
+    try:
+        with st.spinner("Analysing capacity..."):
+
+            analysis = explain_capacity_with_tool(
+                forecast_enrolment=int(forecast_input),
+                approved_capacity=int(capacity_input),
+            )
+
+        result = analysis["tool_result"]
+
+        col1, col2, col3 = st.columns(3)
+
+        col1.metric(
+            "Capacity Gap",
+            result["capacity_gap"],
+        )
+
+        col2.metric(
+            "Projected Utilisation",
+            f"{result['utilisation_percent']}%",
+        )
+
+        col3.metric(
+            "Remaining Places",
+            result["remaining_places"],
+        )
+
+        st.write(
+            "Planning Status:",
+            result["status"].replace("_", " ").title(),
+        )
+
+        st.subheader("AI Explanation")
+        st.write(analysis["explanation"])
+
+        if result["status"] == "over_capacity":
+            st.warning(
+                "Forecast enrolment exceeds "
+                "approved institutional capacity."
+            )
+
+    except (RuntimeError, ValueError):
+        st.error(
+            "Capacity analysis failed. "
+            "Check the inputs and Ollama connection."
+        )
+
 
 # --------------------------------------------------
 # STRUCTURED AI FORECAST EXPLANATION
