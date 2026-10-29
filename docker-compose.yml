@@ -1,0 +1,15 @@
+services:
+  enrolment-assistant:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      # Host port 8503 avoids clashing with local Streamlit on port 8502.
+      - "8503:8502"
+    environment:
+      OLLAMA_BASE_URL: "http://host.docker.internal:11434"
+      OLLAMA_MODEL: "qwen3:1.7b"
+      PYTHONPATH: "/app"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    init: true

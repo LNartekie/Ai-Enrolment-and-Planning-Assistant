@@ -543,6 +543,15 @@ except Exception as error:
 
     st.stop()
 
+# Save the latest forecast for capacity planning.
+st.session_state["latest_forecast_enrolment"] = int(
+    round(forecast_result["predicted_enrolment"])
+)
+
+st.session_state["capacity_forecast_input"] = (
+    st.session_state["latest_forecast_enrolment"]
+)
+
 
 # --------------------------------------------------
 # FORECAST SUMMARY
@@ -1057,17 +1066,21 @@ else:
 # --------------------------------------------------
 # AI CAPACITY PLANNING
 # --------------------------------------------------
-
+if "capacity_forecast_input" not in st.session_state:
+    st.session_state["capacity_forecast_input"] = 0
+    
 st.subheader("AI Capacity Planning Analysis")
 
 with st.form("capacity_planning_form"):
 
     forecast_input = st.number_input(
-        "Forecast Enrolment",
-        min_value=0,
-        value=1900,
-        step=1,
-    )
+    "Forecast Enrolment",
+    min_value=0,
+    value=0,
+    step=1,
+    key="capacity_forecast_input",
+    disabled=True,
+)
 
     capacity_input = st.number_input(
         "Approved Capacity",
